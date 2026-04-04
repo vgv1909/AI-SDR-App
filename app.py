@@ -207,31 +207,16 @@ def get_openai_key():
 
 @st.cache_resource
 def build_rag_index(_df_en, _df_ml, _saas, _model, _fc, api_key):
-    """Build ChromaDB index from company profiles."""
+    """Build TF-IDF index from company profiles — no ChromaDB needed."""
     try:
-        import chromadb
-        from chromadb.utils import embedding_functions
+        from sklearn.feature_extraction.text import TfidfVectorizer
         from openai import OpenAI
-
-        ef = embedding_functions.OpenAIEmbeddingFunction(
-            api_key=api_key,
-            model_name="text-embedding-3-small"
-        )
-        client = chromadb.Client()
-
-        try:
-            client.delete_collection("ai_sdr")
-        except:
-            pass
-
-        col = client.create_collection("ai_sdr", embedding_function=ef,
-                                        metadata={"hnsw:space":"cosine"})
 
         fc_list = list(_fc)
         X_all   = _df_ml[fc_list]
         probs   = _model.predict_proba(X_all)[:,1]
 
-        docs, metas, ids = [], [], []
+        docs, metas = [], []
         for i, (_, row) in enumerate(_df_en.iterrows()):
             if i >= len(probs): break
             hiring  = "actively hiring" if row.get('active_hiring',0) else "not hiring"
@@ -244,11 +229,11 @@ def build_rag_index(_df_en, _df_ml, _saas, _model, _fc, api_key):
             funding = row.get('funding_total_usd',0)
 
             urgency = []
-            if row.get('active_hiring',0):         urgency.append("currently hiring")
-            if row.get('recent_funding_event',0):  urgency.append("recently funded")
-            if reply > 20:                          urgency.append(f"high reply rate {reply:.1f}%")
-            if days < 30:                           urgency.append(f"contacted {days} days ago")
-            if intent > 60:                         urgency.append(f"high intent {intent:.1f}")
+            if row.get('active_hiring',0):        urgency.append("currently hiring")
+            if row.get('recent_funding_event',0): urgency.append("recently funded")
+            if reply > 20:                         urgency.append(f"high reply rate {reply:.1f}%")
+            if days < 30:                          urgency.append(f"contacted {days} days ago")
+            if intent > 60:                        urgency.append(f"high intent {intent:.1f}")
 
             doc = f"""
 Company: {row.get('name','Unknown')}
@@ -271,38 +256,47 @@ Urgency signals: {', '.join(urgency) if urgency else 'none'}
 
             docs.append(doc)
             metas.append({
-                'name'         : str(row.get('name','Unknown')),
-                'industry'     : str(row.get('industry','Unknown')),
-                'country'      : str(row.get('country_code','Unknown')),
-                'conv_prob'    : float(probs[i]),
-                'lead_score'   : float(lead),
-                'intent_score' : float(intent),
-                'active_hiring': int(row.get('active_hiring',0)),
+                'name'          : str(row.get('name','Unknown')),
+                'industry'      : str(row.get('industry','Unknown')),
+                'country'       : str(row.get('country_code','Unknown')),
+                'conv_prob'     : float(probs[i]),
+                'lead_score'    : float(lead),
+                'intent_score'  : float(intent),
+                'active_hiring' : int(row.get('active_hiring',0)),
                 'recent_funding': int(row.get('recent_funding_event',0)),
-                'reply_rate'   : float(reply),
-                'days_contact' : int(days),
+                'reply_rate'    : float(reply),
+                'days_contact'  : int(days),
                 'deal_potential': float(deal),
             })
-            ids.append(f"co_{i}")
 
-        # Add in batches of 50
-        for i in range(0, len(docs), 50):
-            col.add(documents=docs[i:i+50],
-                    metadatas=metas[i:i+50],
-                    ids=ids[i:i+50])
+        # Build TF-IDF index
+        vectorizer = TfidfVectorizer(max_features=5000, stop_words='english')
+        tfidf_matrix = vectorizer.fit_transform(docs)
 
-        return col, True
+        return {'docs': docs, 'metas': metas,
+                'vectorizer': vectorizer, 'matrix': tfidf_matrix}, True
     except Exception as e:
         return None, str(e)
 
-def rag_answer(question, collection, saas, api_key):
-    """Query RAG and get GPT-4o answer."""
+def rag_answer(question, index, saas, api_key):
+    """Query TF-IDF index and get GPT-4o answer."""
+    from sklearn.metrics.pairwise import cosine_similarity
     from openai import OpenAI
+    import numpy as np
 
-    results = collection.query(query_texts=[question], n_results=8)
-    docs    = results['documents'][0]
-    metas   = results['metadatas'][0]
-    context = "\n\n---\n\n".join(docs)
+    # Retrieve relevant companies using TF-IDF cosine similarity
+    vectorizer  = index['vectorizer']
+    matrix      = index['matrix']
+    docs        = index['docs']
+    metas       = index['metas']
+
+    q_vec       = vectorizer.transform([question])
+    scores      = cosine_similarity(q_vec, matrix).flatten()
+    top_indices = np.argsort(scores)[::-1][:8]
+
+    retrieved_docs  = [docs[i]  for i in top_indices]
+    retrieved_metas = [metas[i] for i in top_indices]
+    context         = "\n\n---\n\n".join(retrieved_docs)
 
     prod_stats = saas.groupby('Product').agg(
         revenue=('Sales','sum'), transactions=('Sales','count')
