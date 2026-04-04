@@ -193,10 +193,17 @@ def why_text(sv_row, fc, n=3):
 
 # ── RAG Functions ──────────────────────────────────────────────────────────────
 def get_openai_key():
+    # First try Streamlit secrets (for deployed app)
+    try:
+        return st.secrets["OPENAI_API_KEY"]
+    except:
+        pass
+    # Then try environment variable (for local development)
     key = os.getenv("OPENAI_API_KEY", "")
-    if not key:
-        key = st.session_state.get("openai_key", "")
-    return key
+    if key:
+        return key
+    # Finally try session state (fallback)
+    return st.session_state.get("openai_key", "")
 
 @st.cache_resource
 def build_rag_index(_df_en, _df_ml, _saas, _model, _fc, api_key):
@@ -370,14 +377,6 @@ with st.sidebar:
     sel_prod  = st.selectbox("📦 Product:", all_prods, index=all_prods.index('ContactMatcher'))
     top_k     = st.slider("🏆 Top N Companies:", 5, 20, 10)
     st.markdown("---")
-    st.markdown("### 🔑 OpenAI API Key")
-    api_key_input = st.text_input("Enter your OpenAI API key:",
-                                   type="password",
-                                   value=get_openai_key(),
-                                   help="Required for the AI Sales Assistant tab")
-    if api_key_input:
-        st.session_state["openai_key"] = api_key_input
-    st.markdown("---")
     st.markdown("""
 **System:**
 - 1,000 Crunchbase companies
@@ -444,7 +443,7 @@ with tab_rag:
     api_key = get_openai_key()
 
     if not api_key:
-        st.warning("⚠️ Please enter your OpenAI API key in the sidebar to use the AI Sales Assistant.")
+        st.error("⚠️ API key not configured. Please contact the app administrator.")
     else:
         # Build RAG index
         with st.spinner("🔨 Building AI knowledge base from 1,000 company profiles..."):
