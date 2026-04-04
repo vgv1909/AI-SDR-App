@@ -24,53 +24,53 @@ st.markdown("""
     .stApp { background-color: #f0f2f6; }
     .metric-card { background:white; padding:20px; border-radius:12px;
         box-shadow:0 2px 8px rgba(0,0,0,0.08); text-align:center; margin:5px; color:#111 !important; }
-    .metric-value { font-size:2rem; font-weight:700; color:#1C4E80 !important; }
+    .metric-value { font-size:2rem; font-weight:700; color:#004D40 !important; }
     .metric-label { font-size:0.85rem; color:#444 !important; margin-top:4px; }
-    .company-card { background:white; border-left:5px solid #1C4E80; padding:15px 20px;
+    .company-card { background:white; border-left:5px solid #004D40; padding:15px 20px;
         border-radius:8px; margin:8px 0; box-shadow:0 1px 4px rgba(0,0,0,0.06); color:#111 !important; }
-    .company-card b { color:#1C4E80 !important; }
+    .company-card b { color:#004D40 !important; }
     .company-card span { color:#333 !important; }
     .why-box { background:#e8f4fd; border:1px solid #b3d9f5; border-radius:8px;
-        padding:12px 16px; margin-top:8px; font-size:0.9rem; color:#1C4E80; }
+        padding:12px 16px; margin-top:8px; font-size:0.9rem; color:#004D40; }
     .info-box { background:#f0fdf4; border:1px solid #86efac; border-radius:8px;
         padding:16px 20px; margin:8px 0; font-size:0.92rem; color:#166534; }
     .warn-box { background:#fffbeb; border:1px solid #fcd34d; border-radius:8px;
         padding:16px 20px; margin:8px 0; font-size:0.92rem; color:#92400e; }
-    .section-title { font-size:1.3rem; font-weight:700; color:#1C4E80;
+    .section-title { font-size:1.3rem; font-weight:700; color:#004D40;
         border-bottom:2px solid #e0e0e0; padding-bottom:6px; margin-bottom:16px; }
     .step-box { background:white; border-radius:10px; padding:16px 20px; margin:8px 0;
-        box-shadow:0 1px 4px rgba(0,0,0,0.06); border-left:4px solid #0091D5; color:#111 !important; }
-    .chat-user { background:#1C4E80; color:white; padding:12px 16px; border-radius:12px 12px 4px 12px;
+        box-shadow:0 1px 4px rgba(0,0,0,0.06); border-left:4px solid #00897B; color:#111 !important; }
+    .chat-user { background:#004D40; color:white; padding:12px 16px; border-radius:12px 12px 4px 12px;
         margin:8px 0; max-width:80%; margin-left:auto; font-size:0.95rem; }
     .chat-ai { background:white; color:#111; padding:14px 18px; border-radius:12px 12px 12px 4px;
         margin:8px 0; max-width:90%; box-shadow:0 2px 6px rgba(0,0,0,0.08); font-size:0.95rem; }
     .chat-sources { background:#f8f9fa; border:1px solid #e0e0e0; border-radius:8px;
         padding:8px 12px; margin-top:6px; font-size:0.8rem; color:#666; }
     .suggested-btn { background:#e8f4fd; border:1px solid #b3d9f5; border-radius:20px;
-        padding:6px 14px; margin:4px; font-size:0.85rem; color:#1C4E80; cursor:pointer; }
+        padding:6px 14px; margin:4px; font-size:0.85rem; color:#004D40; cursor:pointer; }
     .team-card { background:white; border-radius:12px; padding:18px 22px;
         box-shadow:0 2px 8px rgba(0,0,0,0.07); margin-bottom:14px;
-        border-top:4px solid #1C4E80; color:#111 !important; }
+        border-top:4px solid #004D40; color:#111 !important; }
     /* Fix Streamlit button text */
     .stButton > button { 
-        background-color: #1C4E80 !important;
+        background-color: #004D40 !important;
         color: white !important;
         border: none !important;
         border-radius: 8px !important;
         font-weight: 500 !important;
     }
     .stButton > button:hover {
-        background-color: #0091D5 !important;
+        background-color: #00897B !important;
         color: white !important;
     }
     /* Fix all text globally */
     p, li, span, div, label { color: #111111 !important; }
-    h1, h2, h3, h4, h5 { color: #1C4E80 !important; }
+    h1, h2, h3, h4, h5 { color: #004D40 !important; }
     .stMarkdown { color: #111111 !important; }
     /* Fix caption text */
     .stCaption { color: #444444 !important; }
     /* Fix tab text */
-    .stTabs [data-baseweb="tab"] { color: #1C4E80 !important; }
+    .stTabs [data-baseweb="tab"] { color: #004D40 !important; }
     /* Fix selectbox and slider labels */
     .stSelectbox label, .stSlider label { color: #111111 !important; }
 </style>
@@ -341,12 +341,10 @@ Answer based on the data above. Be specific and actionable."""
 
 # ── LOAD ───────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div style='background:linear-gradient(135deg,#1C4E80,#0091D5);
-     padding:24px 32px;border-radius:14px;margin-bottom:20px'>
-  <h1 style='color:white;margin:0;font-size:2rem'>🎯 AI-SDR: Intelligent Account Prioritization</h1>
-  <p style='color:#cce4f7;margin:6px 0 0 0;font-size:0.95rem'>
-    University of North Texas &nbsp;|&nbsp; Girivarshini Varatha Raja
-  </p>
+<div style='background:#004D40;padding:28px 32px;border-radius:14px;margin-bottom:20px'>
+  <h1 style='color:white;margin:0;font-size:2.2rem;font-weight:800;letter-spacing:-0.5px'>
+    🎯 AI-SDR: Intelligent Account Prioritization
+  </h1>
 </div>""", unsafe_allow_html=True)
 
 with st.spinner("Loading data and training model..."):
@@ -541,7 +539,7 @@ with tab_top:
         y=[f"#{i+1} {n[:28]}" for i,n in enumerate(top_df['name'])],
         orientation='h',
         marker=dict(color=top_df['combined_score'],
-                    colorscale=[[0,'#93C5FD'],[1,'#1C4E80']], showscale=False),
+                    colorscale=[[0,'#80CBC4'],[1,'#004D40']], showscale=False),
         text=[f"{s:.3f}" for s in top_df['combined_score']], textposition='outside',
     ))
     fig.update_layout(height=380, margin=dict(l=0,r=60,t=10,b=10),
@@ -585,7 +583,7 @@ with tab_xai:
     fi   = pd.DataFrame({'Feature':[FEATURE_LABELS.get(f,f) for f in fc],'SHAP':ms})
     fi   = fi.sort_values('SHAP',ascending=True).tail(15)
     fig2 = go.Figure(go.Bar(x=fi['SHAP'],y=fi['Feature'],orientation='h',
-        marker=dict(color=fi['SHAP'],colorscale=[[0,'#93C5FD'],[1,'#1C4E80']])))
+        marker=dict(color=fi['SHAP'],colorscale=[[0,'#80CBC4'],[1,'#004D40']])))
     fig2.update_layout(height=420,margin=dict(l=0,r=20,t=10,b=10),
         xaxis_title="Mean |SHAP Value|",plot_bgcolor='white',paper_bgcolor='white')
     st.plotly_chart(fig2, use_container_width=True)
@@ -642,7 +640,7 @@ with tab_market:
         st.markdown("**Revenue across catalog**")
         rv = saas.groupby('Product')['Sales'].sum().sort_values(ascending=False).reset_index()
         fig5 = go.Figure(go.Bar(x=rv['Product'],y=rv['Sales'],
-            marker_color=['#1C4E80' if p==sel_prod else '#93C5FD' for p in rv['Product']]))
+            marker_color=['#004D40' if p==sel_prod else '#80CBC4' for p in rv['Product']]))
         fig5.update_layout(height=300,xaxis_tickangle=-35,yaxis_title="Revenue ($)",
             margin=dict(l=0,r=0,t=10,b=80),plot_bgcolor='white',paper_bgcolor='white')
         st.plotly_chart(fig5, use_container_width=True)
@@ -720,7 +718,7 @@ with tab_bias:
 
     st.markdown("#### 🌍 Geographic Bias")
     cst = df_f.groupby('country_code').agg(n=('name','count'),avg=('combined_score','mean')).reset_index().sort_values('n',ascending=False).head(15)
-    fig_g = go.Figure(go.Bar(x=cst['country_code'],y=cst['avg'],marker_color='#1C4E80'))
+    fig_g = go.Figure(go.Bar(x=cst['country_code'],y=cst['avg'],marker_color='#004D40'))
     fig_g.update_layout(height=300,plot_bgcolor='white',paper_bgcolor='white',
         xaxis_title="Country",yaxis_title="Avg Score",margin=dict(l=0,r=0,t=10,b=10))
     st.plotly_chart(fig_g, use_container_width=True)
@@ -734,7 +732,7 @@ with tab_bias:
     if 'industry' in df_f.columns:
         ist  = df_f.groupby('industry').agg(avg=('combined_score','mean')).reset_index().sort_values('avg',ascending=True)
         fig_i = go.Figure(go.Bar(x=ist['avg'],y=ist['industry'].str[:30],orientation='h',
-            marker=dict(color=ist['avg'],colorscale=[[0,'#FCA5A5'],[0.5,'#93C5FD'],[1,'#1C4E80']])))
+            marker=dict(color=ist['avg'],colorscale=[[0,'#FCA5A5'],[0.5,'#80CBC4'],[1,'#004D40']])))
         fig_i.update_layout(height=480,plot_bgcolor='white',paper_bgcolor='white',
             xaxis_title="Avg Score",margin=dict(l=0,r=20,t=10,b=10))
         st.plotly_chart(fig_i, use_container_width=True)
