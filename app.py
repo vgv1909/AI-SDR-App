@@ -410,13 +410,14 @@ for col, val, lbl in zip(
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── TABS ───────────────────────────────────────────────────────────────────────
-tab_rag, tab_top, tab_xai, tab_market, tab_deploy, tab_bias = st.tabs([
+tab_rag, tab_top, tab_xai, tab_market, tab_deploy, tab_bias, tab_team = st.tabs([
     "🤖 AI Sales Assistant",
     "🏆 Top Companies",
     "🔍 XAI Explanations",
     "📊 Market Intelligence",
     "🚀 Deployment",
     "⚖️ Bias & Fairness",
+    "👥 Team",
 ])
 
 # ══════════════════════════════════════════════════════════════════════
@@ -749,6 +750,57 @@ with tab_bias:
     }), use_container_width=True, hide_index=True)
 
     st.markdown('<div class="info-box">✅ <b>Ethical design:</b> AI-SDR uses only observable B2B signals (hiring, funding, web traffic, tech stack). No demographic attributes used.</div>', unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════
+# TAB 7 — TEAM
+# ══════════════════════════════════════════════════════════════════════
+with tab_team:
+    st.markdown('<div class="section-title">👥 Team Roles & Responsibilities</div>', unsafe_allow_html=True)
+    st.markdown("**Course:** DTSC 5082 · MS Data Science · University of North Texas")
+    st.markdown("---")
+
+    for m in TEAM:
+        bullets = "".join([f"<li style='color:#111;margin-bottom:6px'>{c}</li>" for c in m['contributions']])
+        st.markdown(f"""<div class="team-card">
+            <h3 style="margin:0 0 4px 0;color:#004D40">{m['icon']} {m['name']}</h3>
+            <p style="margin:0 0 12px 0;color:#00897B;font-weight:600">{m['role']}</p>
+            <ul style="margin:0;padding-left:20px">{bullets}</ul>
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown("#### 📦 Project Architecture")
+    st.code("""\
+AI-SDR Project Architecture
+═══════════════════════════════════════════════════════
+
+DATA LAYER
+  ├── SaaS-Sales.csv           9,994 real B2B transactions (14 products × 10 industries)
+  ├── crunchbase_cleaned.csv   1,000 companies × 45 features
+  └── crunchbase_ml_ready.csv  41 encoded + log-transformed features
+
+INTELLIGENCE LAYER
+  ├── Product-Industry Bridge  Affinity weights from real SaaS sales history
+  ├── GB Classifier            Predicts conversion probability (ROC-AUC: 0.9379)
+  ├── GB Regressor             Predicts product fit score 0-100 (R²: 0.9476)
+  └── Combined Score           0.6 × Conv.Prob + 0.4 × (FitScore / 100)
+
+EXPLAINABILITY LAYER (XAI)
+  ├── SHAP Global              Which features matter most across all companies
+  └── SHAP Local               Why this specific company was ranked here
+
+RAG LAYER
+  ├── TF-IDF Vector Store      1,000 company profiles indexed
+  ├── Cosine Similarity        Retrieves most relevant companies per query
+  └── GPT-4o                   Generates grounded, actionable recommendations
+
+DEPLOYMENT LAYER
+  ├── Streamlit App            Interactive web dashboard
+  ├── Streamlit Cloud          Free hosting, public URL
+  └── Monitoring               AUC tracking, drift detection, retraining schedule
+
+KEY RESULTS
+  ROC-AUC: 0.9379  |  PR-AUC: 0.8465  |  P@10: 1.00  |  R²: 0.9476
+""", language="text")
 
 # ── FOOTER ─────────────────────────────────────────────────────────────────────
 st.markdown("---")
