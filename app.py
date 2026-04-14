@@ -446,10 +446,11 @@ for col, val, lbl in zip(
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── TABS ───────────────────────────────────────────────────────────────────────
-tab_rag, tab_top, tab_xai, tab_market, tab_deploy, tab_bias, tab_team = st.tabs([
+tab_rag, tab_top, tab_xai, tab_lime, tab_market, tab_deploy, tab_bias, tab_team = st.tabs([
     "🤖 AI Sales Assistant",
     "🏆 Top Companies",
     "🔍 XAI Explanations",
+    "🧪 LIME Explanations",
     "📊 Market Intelligence",
     "🚀 Deployment",
     "⚖️ Bias & Fairness",
@@ -764,7 +765,174 @@ with tab_xai:
         st.plotly_chart(fig3, use_container_width=True)
 
 # ══════════════════════════════════════════════════════════════════════
-# TAB 4 — MARKET INTELLIGENCE
+# TAB 4 — LIME EXPLANATIONS
+# ══════════════════════════════════════════════════════════════════════
+with tab_lime:
+    st.markdown('<div class="section-title">🧪 LIME — Local Interpretable Model-Agnostic Explanations</div>', unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class="info-box">
+    <b>What is LIME?</b> LIME explains individual predictions by fitting a simple linear model
+    locally around each company. Unlike SHAP, LIME is <b>model-agnostic</b> — it works on any ML model.
+    <br><br>
+    <b>SHAP vs LIME:</b><br>
+    • <b>SHAP</b> — Mathematically consistent, uses Shapley values from game theory<br>
+    • <b>LIME</b> — Model-agnostic, uses local linear approximation<br>
+    • When both agree → very high confidence in the explanation ✅
+    </div>
+    """, unsafe_allow_html=True)
+
+    try:
+        import lime
+        import lime.lime_tabular
+        from sklearn.model_selection import train_test_split as tts
+
+        # Build LIME explainer
+        X_train_lime, _, y_train_lime, _ = tts(
+            X_all, df_ml['converted'], test_size=0.2, random_state=42
+        )
+
+        lime_explainer = lime.lime_tabular.LimeTabularExplainer(
+            training_data        = X_train_lime.values,
+            feature_names        = [FEATURE_LABELS.get(f, f) for f in fc],
+            class_names          = ['No Match', 'Product Match'],
+            mode                 = 'classification',
+            random_state         = 42,
+            discretize_continuous= True,
+        )
+
+        # Company selector
+        st.markdown("#### 🏢 Select a Company to Explain")
+        lime_co = st.selectbox("Choose a company:", df_r['name'].tolist()[:50], key="lime_sel")
+        lime_row = df_en[df_en['name'] == lime_co]
+
+        if len(lime_row) > 0:
+            lime_idx  = df_en.index.get_loc(lime_row.index[0])
+            instance  = X_all.iloc[lime_idx].values
+            conv_prob = cp[lime_idx]
+
+            with st.spinner("Generating LIME explanation..."):
+                exp = lime_explainer.explain_instance(
+                    data_row   = instance,
+                    predict_fn = model.predict_proba,
+                    num_features = 10,
+                    num_samples  = 500,
+                )
+
+            lime_list   = exp.as_list()
+            lime_feats  = [f[0] for f in lime_list]
+            lime_vals   = [f[1] for f in lime_list]
+            lime_colors = ['#10B981' if v > 0 else '#EF4444' for v in lime_vals]
+
+            # Metrics
+            c1l, c2l, c3l = st.columns(3)
+            c1l.metric("Company",            lime_co[:25])
+            c2l.metric("Conversion Prob",    f"{conv_prob:.1%}")
+            c3l.metric("Prediction",         "✅ Match" if conv_prob > 0.5 else "❌ No Match")
+
+            st.markdown("---")
+
+            # LIME bar chart
+            fig_lime = go.Figure(go.Bar(
+                x=lime_vals,
+                y=lime_feats,
+                orientation='h',
+                marker_color=lime_colors,
+                text=[f"{v:+.4f}" for v in lime_vals],
+                textposition='outside',
+            ))
+            fig_lime.add_vline(x=0, line_color='black', line_width=1)
+            fig_lime.update_layout(
+                height=420,
+                title=f"LIME Explanation — {lime_co}",
+                xaxis_title="LIME Weight (green = increases match probability, red = decreases)",
+                margin=dict(l=0, r=100, t=50, b=10),
+                plot_bgcolor='white', paper_bgcolor='white',
+            )
+            st.plotly_chart(fig_lime, use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("#### 🔄 SHAP vs LIME Comparison")
+            st.markdown("*If both methods agree on the top features — the explanation is highly reliable.*")
+
+            # Get SHAP for same company
+            sv_lime = shap_vals[lime_idx]
+            shap_df = pd.DataFrame({
+                'Feature': [FEATURE_LABELS.get(f, f) for f in fc],
+                'SHAP'   : sv_lime,
+            }).sort_values('SHAP', key=abs, ascending=False).head(5)
+
+            lime_df = pd.DataFrame({
+                'Feature'    : lime_feats[:5],
+                'LIME Weight': lime_vals[:5],
+            })
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**🔵 SHAP Top 5 Features:**")
+                for _, r in shap_df.iterrows():
+                    direction = "🟢 +" if r['SHAP'] > 0 else "🔴 "
+                    st.markdown(f"{direction} {r['Feature']} `({r['SHAP']:+.4f})`")
+
+            with col2:
+                st.markdown("**🟡 LIME Top 5 Features:**")
+                for _, r in lime_df.iterrows():
+                    direction = "🟢 +" if r['LIME Weight'] > 0 else "🔴 "
+                    st.markdown(f"{direction} {r['Feature']} `({r['LIME Weight']:+.4f})`")
+
+            # Agreement score
+            shap_top5 = set(shap_df['Feature'].tolist())
+            lime_top5 = set(lime_feats[:5])
+            agreement = len(shap_top5 & lime_top5)
+            agreement_pct = agreement / 5 * 100
+
+            color = "info-box" if agreement_pct >= 60 else "warn-box"
+            st.markdown(f'<div class="{color}">🤝 <b>Agreement Score: {agreement_pct:.0f}%</b> — {agreement}/5 top features match between SHAP and LIME. {"High confidence in this explanation ✅" if agreement_pct >= 60 else "Moderate agreement — results are directionally consistent."}</div>', unsafe_allow_html=True)
+
+            st.markdown("---")
+            st.markdown("#### 🏆 Top 3 Companies — LIME Comparison")
+            st.markdown("*See how LIME explains the top 3 ranked companies side by side.*")
+
+            top3_names = df_r.head(3)['name'].tolist()
+            cols3 = st.columns(3)
+            for col, name in zip(cols3, top3_names):
+                row_data = df_en[df_en['name'] == name]
+                if len(row_data) > 0:
+                    idx3     = df_en.index.get_loc(row_data.index[0])
+                    inst3    = X_all.iloc[idx3].values
+                    prob3    = cp[idx3]
+                    with st.spinner(f"Explaining {name}..."):
+                        exp3  = lime_explainer.explain_instance(
+                            inst3, model.predict_proba,
+                            num_features=6, num_samples=300,
+                        )
+                    list3   = exp3.as_list()
+                    vals3   = [f[1] for f in list3]
+                    feats3  = [f[0] for f in list3]
+                    colors3 = ['#10B981' if v > 0 else '#EF4444' for v in vals3]
+
+                    fig3l = go.Figure(go.Bar(
+                        x=vals3, y=feats3, orientation='h',
+                        marker_color=colors3, name=name,
+                    ))
+                    fig3l.add_vline(x=0, line_color='black', line_width=0.8)
+                    fig3l.update_layout(
+                        height=300,
+                        title=f"{name[:20]} ({prob3:.1%})",
+                        margin=dict(l=0, r=20, t=40, b=10),
+                        plot_bgcolor='white', paper_bgcolor='white',
+                        font=dict(size=9),
+                    )
+                    with col:
+                        st.plotly_chart(fig3l, use_container_width=True)
+
+    except ImportError:
+        st.error("LIME library not installed. Run: pip install lime")
+    except Exception as e:
+        st.error(f"LIME error: {str(e)}")
+
+# ══════════════════════════════════════════════════════════════════════
+# TAB 5 — MARKET INTELLIGENCE
 # ══════════════════════════════════════════════════════════════════════
 with tab_market:
     st.markdown('<div class="section-title">📊 Market Intelligence</div>', unsafe_allow_html=True)
