@@ -131,27 +131,55 @@ SUGGESTED_QUESTIONS = [
 ]
 
 TEAM = [
-    {"name":"Girivarshini Varatha Raja","role":"Team Leader · Feature Selection & XAI","icon":"👩‍💻",
-     "contributions":["Led overall project design and system architecture",
-         "Performed mutual information analysis and permutation importance",
-         "Built SHAP-based XAI explanations — global and local",
-         "Conducted Bias & Fairness audit across geography, industry, company size",
-         "Built and deployed the Streamlit application with RAG integration"]},
-    {"name":"Kishore Dinakaran","role":"Hyperparameter Tuning","icon":"👨‍💻",
-     "contributions":["Ran GridSearchCV across 27 hyperparameter combinations",
-         "Identified best Gradient Boosting config (learning_rate=0.05, max_depth=3)",
-         "Designed the API architecture for production deployment",
-         "Defined model monitoring and retraining strategy"]},
-    {"name":"Praneetha Meda","role":"Validation Techniques","icon":"👩‍🔬",
-     "contributions":["Implemented 5-Fold Stratified Cross-Validation across 3 models",
-         "Generated learning curves to diagnose bias vs variance",
-         "Documented real-time vs batch deployment modes",
-         "Verified train/test split integrity with stratified class balance"]},
-    {"name":"Vikram Batchu","role":"Metrics & Evaluation","icon":"👨‍🔬",
-     "contributions":["Computed classification metrics: ROC-AUC=0.9379, PR-AUC=0.8465",
-         "Implemented ranking metrics: P@10=1.00, NDCG@10=1.00",
-         "Evaluated regression model: R²=0.9476, RMSE=3.61",
-         "Built confusion matrix analysis and threshold optimization"]},
+    {
+        "name": "Girivarshini Varatha Raja",
+        "role": "Team Leader · Data Engineering · XAI · Deployment",
+        "icon": "👩‍💻",
+        "contributions": [
+            "Led overall project design, system architecture, and team coordination across all phases",
+            "Acquired and preprocessed Crunchbase dataset — reduced 92 raw columns to 45 engineered features",
+            "Performed feature selection using Mutual Information analysis and Permutation Importance",
+            "Built SHAP-based explainability system — global feature importance and local per-company explanations",
+            "Conducted Bias & Fairness audit across geography, industry, and company size subgroups",
+            "Built and deployed the complete Streamlit web application with RAG + GPT-4o integration",
+        ]
+    },
+    {
+        "name": "Kishore Dinakaran",
+        "role": "ML Engineer · Model Development · Production Design",
+        "icon": "👨‍💻",
+        "contributions": [
+            "Built the product-industry affinity bridge from real SaaS transaction data across 14 products",
+            "Applied log transformations and feature engineering to handle skewed distributions",
+            "Tuned XGBoost using GridSearchCV across 27 hyperparameter combinations × 5 folds (135 fits)",
+            "Trained and evaluated all 4 models: Logistic Regression, Random Forest, Gradient Boosting, XGBoost",
+            "Designed the production API architecture and defined the model monitoring and retraining strategy",
+        ]
+    },
+    {
+        "name": "Praneetha Meda",
+        "role": "Data Analyst · EDA · Model Validation",
+        "icon": "👩‍🔬",
+        "contributions": [
+            "Conducted full exploratory data analysis with 9 visualizations — distributions, correlations, geographic maps",
+            "Identified key insight: companies actively hiring and recently funded show the highest conversion rates",
+            "Performed label encoding of categorical variables and verified data integrity across all preprocessing steps",
+            "Implemented 5-Fold Stratified Cross-Validation across all 4 models to ensure stable performance estimates",
+            "Documented real-time vs batch deployment modes and analyzed learning curves for bias-variance tradeoff",
+        ]
+    },
+    {
+        "name": "Vikram Batchu",
+        "role": "ML Evaluation · RAG System · Ranking Metrics",
+        "icon": "👨‍🔬",
+        "contributions": [
+            "Analyzed SaaS transaction data to derive product-specific industry revenue distributions",
+            "Computed full classification metrics: ROC-AUC = 0.9379, PR-AUC = 0.8465, F1 = 0.7500",
+            "Implemented information retrieval ranking metrics: Precision@10 = 1.00, NDCG@10 = 1.00, MAP@10 = 1.00",
+            "Built LIME explainability as a second XAI method for model-agnostic prediction verification",
+            "Constructed the TF-IDF RAG knowledge base indexing 1,000 company profiles with GPT-4o response generation",
+        ]
+    },
 ]
 
 # ── Load Data ──────────────────────────────────────────────────────────────────
@@ -945,7 +973,7 @@ with tab_team:
     st.markdown("---")
 
     for m in TEAM:
-        bullets = "".join([f"<li style='color:#111;margin-bottom:6px'>{c}</li>" for c in m['contributions']])
+        bullets = "".join([f"<li style='color:#111;margin-bottom:8px'>{c}</li>" for c in m['contributions']])
         st.markdown(f"""<div class="team-card">
             <h3 style="margin:0 0 4px 0;color:#004D40">{m['icon']} {m['name']}</h3>
             <p style="margin:0 0 12px 0;color:#00897B;font-weight:600">{m['role']}</p>
