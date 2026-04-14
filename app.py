@@ -543,12 +543,20 @@ with tab_top:
     else:
         display_df = top_df
 
-    # Signal summary
-    c1s, c2s, c3s, c4s = st.columns(4)
-    c1s.metric("🧑‍💼 Actively Hiring", f"{int(display_df['active_hiring'].sum())}/{len(display_df)}")
-    c2s.metric("💰 Recently Funded",   f"{int(display_df['recent_funding_event'].sum())}/{len(display_df)}")
-    c3s.metric("📬 Avg Reply Rate",    f"{display_df['reply_rate_pct'].mean():.1f}%" if 'reply_rate_pct' in display_df else "N/A")
-    c4s.metric("💎 Avg Deal Value",    f"${display_df['deal_potential_usd'].mean():,.0f}" if 'deal_potential_usd' in display_df else "N/A")
+    # Signal summary — from ALL 1,000 companies
+c1s, c2s, c3s, c4s = st.columns(4)
+c1s.metric("🧑‍💼 Actively Hiring",
+           f"{int(df_r['active_hiring'].sum())}/{len(df_r)}",
+           f"{df_r['active_hiring'].mean()*100:.1f}% of all companies")
+c2s.metric("💰 Recently Funded",
+           f"{int(df_r['recent_funding_event'].sum())}/{len(df_r)}",
+           f"{df_r['recent_funding_event'].mean()*100:.1f}% of all companies")
+c3s.metric("📬 Avg Reply Rate",
+           f"{df_r['reply_rate_pct'].mean():.1f}%" if 'reply_rate_pct' in df_r.columns else "N/A",
+           f"Top {top_k} avg: {display_df['reply_rate_pct'].mean():.1f}%")
+c4s.metric("💎 Avg Deal Value",
+           f"${df_r['deal_potential_usd'].mean():,.0f}" if 'deal_potential_usd' in df_r.columns else "N/A",
+           f"Top {top_k} avg: ${display_df['deal_potential_usd'].mean():,.0f}")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
