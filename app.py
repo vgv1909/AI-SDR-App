@@ -433,17 +433,17 @@ def compute_shap_cached(_model, _X):
     return shap.TreeExplainer(_model).shap_values(_X)
 
 @st.cache_data
-def compute_scores(_df_ml, _df_en, product, _saas, fc_tuple):
+def compute_scores(_df_ml, _df_en, product, _saas, fc_tuple, _model):
     fc = list(fc_tuple)
     df_c = _df_ml.copy()
     df_c['product_fit_score'] = get_fit_score(product, _df_en, df_c, _saas, fc)
     X_all = df_c[fc]
-    cp    = model.predict_proba(X_all)[:,1]
+    cp    = _model.predict_proba(X_all)[:,1]
     fs    = df_c['product_fit_score'].values
     cs    = cp * 0.6 + fs / 100 * 0.4
     return cp, fs, cs
 
-cp, fs, cs = compute_scores(df_ml, df_en, sel_prod, saas, tuple(fc))
+cp, fs, cs = compute_scores(df_ml, df_en, sel_prod, saas, tuple(fc), model)
 X_all      = df_ml[fc]
 shap_vals  = compute_shap_cached(model, X_all)
 prod_stats = saas[saas['Product']==sel_prod]
