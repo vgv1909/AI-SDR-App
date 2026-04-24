@@ -250,7 +250,11 @@ def get_fit_score(product, df_en, df_ml, saas, fc):
         np.random.normal(0, 3, len(df_ml))
     ).clip(0, 100).round(2)
 
-def why_text(sv, fc):
+@st.cache_resource
+def compute_shap(_model, _X_all):
+    explainer = shap.TreeExplainer(_model)
+    sv        = explainer.shap_values(_X_all)
+    return sv
     df_sv = pd.Series(sv, index=fc).sort_values(ascending=False)
     top   = df_sv.head(3)
     parts = []
@@ -424,15 +428,25 @@ with st.sidebar:
             st.rerun()
 
 # ── Compute Scores ─────────────────────────────────────────────────────────────
-df_c = df_ml.copy()
-df_c['product_fit_score'] = get_fit_score(sel_prod, df_en, df_c, saas, fc)
-X_all  = df_c[fc]
-cp     = model.predict_proba(X_all)[:,1]
-fs     = df_c['product_fit_score'].values
-cs     = cp * 0.6 + fs / 100 * 0.4
-shap_explainer = shap.TreeExplainer(model)
-shap_vals      = shap_explainer.shap_values(X_all)
-prod_stats     = saas[saas['Product']==sel_prod]
+@st.cache_resource
+def compute_shap_cached(_model, _X):
+    return shap.TreeExplainer(_model).shap_values(_X)
+
+@st.cache_data
+def compute_scores(_df_ml, _df_en, product, _saas, fc_tuple):
+    fc = list(fc_tuple)
+    df_c = _df_ml.copy()
+    df_c['product_fit_score'] = get_fit_score(product, _df_en, df_c, _saas, fc)
+    X_all = df_c[fc]
+    cp    = model.predict_proba(X_all)[:,1]
+    fs    = df_c['product_fit_score'].values
+    cs    = cp * 0.6 + fs / 100 * 0.4
+    return cp, fs, cs
+
+cp, fs, cs = compute_scores(df_ml, df_en, sel_prod, saas, tuple(fc))
+X_all      = df_ml[fc]
+shap_vals  = compute_shap_cached(model, X_all)
+prod_stats = saas[saas['Product']==sel_prod]
 
 df_r = df_en.copy()
 df_r['conversion_prob']   = cp
