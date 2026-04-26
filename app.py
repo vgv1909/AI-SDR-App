@@ -398,18 +398,14 @@ def build_rag(_df_en, _df_ml, _saas, _model, _le, fc_tuple, final_fc_tuple):
         if reply > 20:   urgency.append(f'high reply rate {reply:.1f}%')
         if days < 30:    urgency.append(f'contacted {days}d ago')
 
-        # Add per-product scores so chatbot answers are product-specific
-        prod_scores = ' | '.join([f'{p}: {all_probs[p][i]:.1%}' 
-                                   for p in sorted(all_probs.keys())])
         doc = '\n'.join([
             f'Company: {row.get("name","?")}',
             f'Industry: {row.get("industry","?")} | Country: {row.get("country_code","?")} | Size: {row.get("employee_range","?")}',
             f'Funding: ${funding:,.0f} | {"recently funded" if funded else "no recent funding"}',
             f'Hiring: {"yes" if hiring else "no"} | Reply rate: {reply:.1f}%',
             f'Days since contact: {days} | Deal potential: ${deal:,.0f}',
-            f'Overall conversion probability: {probs[i]:.1%}',
-            f'Per-product scores: {prod_scores}',
-            f'Urgency: {", ".join(urgency) if urgency else "none"}',
+            f'Conversion probability: {probs[i]:.1%}',
+            f'Urgency signals: {", ".join(urgency) if urgency else "none"}',
         ])
         docs.append(doc)
         metas.append({
@@ -689,11 +685,16 @@ def show_chat():
     if not api_key:
         st.warning("OpenAI API key not found. Add OPENAI_API_KEY to Streamlit secrets.")
 
-# Floating chat button
-col_left, col_right = st.columns([10, 1])
-with col_right:
-    if st.button("💬", help="Open AI Sales Assistant", type="primary",
-                 key="chat_open_btn"):
+# Chat button — labeled and prominent
+# Auto-reopen after suggestion click
+if st.session_state.get('reopen_chat', False):
+    st.session_state.reopen_chat = False
+    show_chat()
+
+col_spacer, col_chat = st.columns([6, 4])
+with col_chat:
+    if st.button("🤖 Ask AI Sales Assistant", type="primary",
+                 use_container_width=True, key="chat_open_btn"):
         show_chat()
 
 # ── TABS ───────────────────────────────────────────────────────────────────────
