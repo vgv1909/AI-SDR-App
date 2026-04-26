@@ -398,9 +398,8 @@ def build_rag(_df_en, _df_ml, _saas, _model, _le, fc_tuple, final_fc_tuple):
         if reply > 20:   urgency.append(f'high reply rate {reply:.1f}%')
         if days < 30:    urgency.append(f'contacted {days}d ago')
 
-        rank_position = i + 1  # rank within the full 1000 company list
         doc = '\n'.join([
-            f'Rank #{rank_position} | Company: {row.get("name","?")}',
+            f'Company: {row.get("name","?")}',
             f'Industry: {row.get("industry","?")} | Country: {row.get("country_code","?")} | Size: {row.get("employee_range","?")}',
             f'Funding: ${funding:,.0f} | {"recently funded" if funded else "no recent funding"}',
             f'Hiring: {"yes" if hiring else "no"} | Reply rate: {reply:.1f}%',
@@ -425,44 +424,31 @@ def build_rag(_df_en, _df_ml, _saas, _model, _le, fc_tuple, final_fc_tuple):
     return {'docs':docs,'metas':metas,'vectorizer':vec,'matrix':matrix}
 
 def rag_answer(query, rag_index, saas, api_key, top_k=8, ranked_df=None, product=None):
-    from sklearn.metrics.pairwise import cosine_similarity
     from openai import OpenAI
 
-    # If we have ranked companies for a specific product, use TOP ranked as context
-    # This ensures the chatbot always references the highest-scored companies
-    if ranked_df is not None and len(ranked_df) > 0:
-        top_companies = set(ranked_df.head(20)['name'].str.lower().tolist())
-        # Build results in EXACT rank order from ranked_df
-        name_to_rag = {}
-        for i, meta in enumerate(rag_index['metas']):
-            name_to_rag[meta['name'].lower()] = {'doc': rag_index['docs'][i], 'meta': meta}
+    # Build context ONLY from the top ranked companies for this product
+    # ranked_df is already sorted by score — #1 is the best prospect
+    name_to_doc = {}
+    for i, meta in enumerate(rag_index['metas']):
+        name_to_doc[meta['name'].lower()] = rag_index['docs'][i]
 
-        top_results = []
-        for name in ranked_df.head(top_k * 2)['name'].tolist():
-            key = name.lower()
-            if key in name_to_rag:
-                top_results.append(name_to_rag[key])
-            if len(top_results) >= top_k:
-                break
-        # Fill remaining slots with TF-IDF results if needed
-        if len(top_results) < top_k:
-            q_vec  = rag_index['vectorizer'].transform([query])
-            scores = cosine_similarity(q_vec, rag_index['matrix']).flatten()
-            extra_idx = np.argsort(scores)[::-1]
-            existing = {r['meta']['name'] for r in top_results}
-            for i in extra_idx:
-                if rag_index['metas'][i]['name'] not in existing:
-                    top_results.append({'doc':rag_index['docs'][i],'meta':rag_index['metas'][i]})
-                if len(top_results) >= top_k: break
-        results = top_results
-    else:
-        # Fallback to TF-IDF retrieval
-        q_vec   = rag_index['vectorizer'].transform([query])
-        scores  = cosine_similarity(q_vec, rag_index['matrix']).flatten()
-        idx     = np.argsort(scores)[::-1][:top_k]
-        results = [{'doc':rag_index['docs'][i],'meta':rag_index['metas'][i]} for i in idx]
+    context_parts = []
+    used_names = []
+    source_df = ranked_df if (ranked_df is not None and len(ranked_df) > 0) else None
 
-    context = '\n\n---\n\n'.join([r['doc'] for r in results])
+    if source_df is not None:
+        for rank_pos, row in enumerate(source_df.head(top_k).itertuples(), 1):
+            name = row.name
+            doc  = name_to_doc.get(name.lower(), '')
+            if doc:
+                # Prepend rank clearly so GPT-4o knows the order
+                context_parts.append(
+                    f"=== RANK #{rank_pos} — TOP PRIORITY ===" + "\n" + doc
+                )
+                used_names.append(name)
+
+    context = '\n\n'.join(context_parts) if context_parts else 'No company data available.'
+    sources  = used_names[:3]
 
     prod_stats = saas.groupby('Product').agg(
         revenue=('Sales','sum'), transactions=('Sales','count')
@@ -546,6 +532,51 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
+    st.markdown("---")
+    st.markdown(f"### 🤖 AI Sales Assistant")
+    st.markdown(f"<small style='color:{SUB}'>Answers based on your current top ranked companies</small>",
+                unsafe_allow_html=True)
+
+    # Sidebar API key
+    _api_key = os.getenv('OPENAI_API_KEY', '')
+
+    # Quick suggestions
+    for _s in [
+        f"Who should I call today?",
+        f"Write a cold email for #1",
+        "Which companies are hiring?",
+    ]:
+        if st.button(_s, key=f"sb_sugg_{_s[:20]}", use_container_width=True):
+            st.session_state.chat_history.append({'role':'user','content':_s})
+            st.session_state['_pending_chat'] = _s
+
+    # Chat history in sidebar
+    if st.session_state.chat_history:
+        st.markdown("---")
+        for _msg in st.session_state.chat_history[-4:]:  # show last 4 messages
+            if _msg['role'] == 'user':
+                st.markdown(f"**👤** {_msg['content']}")
+            else:
+                st.markdown(f"**🤖** {_msg['content'][:300]}{'...' if len(_msg['content'])>300 else ''}")
+                if _msg.get('sources'):
+                    st.caption(f"From: {', '.join(_msg['sources'][:2])}")
+        if st.button("🗑️ Clear chat", key="sb_clear", use_container_width=True):
+            st.session_state.chat_history = []
+            st.rerun()
+
+    # Text input
+    st.markdown("---")
+    _user_input = st.text_input("Ask anything:",
+                                 placeholder="e.g. Why should I call #1?",
+                                 key="sb_chat_input",
+                                 label_visibility="collapsed")
+    if st.button("Send 📨", type="primary", use_container_width=True, key="sb_send"):
+        if _user_input and _api_key:
+            st.session_state.chat_history.append({'role':'user','content':_user_input})
+            st.session_state['_pending_chat'] = _user_input
+        elif not _api_key:
+            st.error("Add OPENAI_API_KEY to Streamlit secrets.")
+
 # ── Compute rankings ───────────────────────────────────────────────────────────
 ranked = rank_for_product(df_en, df_ml, sel_prod, saas,
                           tuple(fc), tuple(final_fc), model, le_prod)
@@ -558,6 +589,21 @@ if sel_size     != 'All': filtered = filtered[filtered['employee_range'] == sel_
 if search: filtered = filtered[filtered['name'].str.contains(search, case=False, na=False)]
 filtered = filtered.reset_index(drop=True)
 top_df   = filtered.head(top_k)
+
+# Process pending chat message — runs after rankings are ready
+if st.session_state.get('_pending_chat') and os.getenv('OPENAI_API_KEY',''):
+    _q = st.session_state.pop('_pending_chat')
+    try:
+        _ans, _srcs = rag_answer(_q, rag_index, saas,
+                                  os.getenv('OPENAI_API_KEY',''),
+                                  ranked_df=ranked,  # use FULL ranked list
+                                  product=sel_prod)
+        st.session_state.chat_history.append(
+            {'role':'assistant','content':_ans,'sources':_srcs})
+    except Exception as _e:
+        st.session_state.chat_history.append(
+            {'role':'assistant','content':f"Error: {str(_e)}",'sources':[]})
+    st.rerun()
 
 # SHAP (sample for speed)
 X_sample = df_ml[fc].copy()
@@ -620,85 +666,7 @@ for col, val, lbl in [
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── Chat popup ─────────────────────────────────────────────────────────────────
-@st.dialog("🤖 AI Sales Assistant", width="large")
-def show_chat():
-    api_key = os.getenv('OPENAI_API_KEY', '')
-    st.markdown(f"<small style='color:{SUB}'>Powered by RAG + GPT-4o · Ask anything about your accounts</small>",
-                unsafe_allow_html=True)
-
-    # Suggested questions
-    st.markdown("**💡 Try:**")
-    sugg_cols = st.columns(2)
-    suggestions = [
-        f"Who should I call today for {sel_prod}?",
-        "Which companies are hiring and recently funded?",
-        f"Write a cold email for the top {sel_prod} prospect",
-        "Which industries have the highest deal potential?",
-    ]
-    for i, s in enumerate(suggestions):
-        with sugg_cols[i % 2]:
-            if st.button(s, key=f"sugg_{i}", use_container_width=True):
-                st.session_state.chat_history.append({'role':'user','content':s})
-                if api_key:
-                    try:
-                        ans, srcs = rag_answer(s, rag_index, saas, api_key, ranked_df=top_df, product=sel_prod)
-                        st.session_state.chat_history.append(
-                            {'role':'assistant','content':ans,'sources':srcs})
-                    except Exception as e:
-                        st.session_state.chat_history.append(
-                            {'role':'assistant','content':f"Error: {e}",'sources':[]})
-                st.rerun()
-
-    st.markdown("---")
-
-    # Chat history
-    chat_area = st.container(height=320)
-    with chat_area:
-        if not st.session_state.chat_history:
-            st.markdown(f"<div style='text-align:center;color:{SUB};padding:40px'>Ask me anything about your accounts 👆</div>",
-                        unsafe_allow_html=True)
-        for msg in st.session_state.chat_history:
-            if msg['role'] == 'user':
-                st.markdown(f'<div class="chat-bubble-user">👤 {msg["content"]}</div>',
-                            unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div class="chat-bubble-ai">🤖 {msg["content"]}</div>',
-                            unsafe_allow_html=True)
-                if msg.get('sources'):
-                    st.caption(f"Sources: {', '.join(msg['sources'])}")
-
-    st.markdown("---")
-    col_inp, col_send, col_clr = st.columns([6, 1, 1])
-    with col_inp:
-        user_input = st.text_input("Your question:", placeholder="e.g. Who has the highest deal potential?",
-                                   label_visibility="collapsed", key="chat_input_field")
-    with col_send:
-        if st.button("Send", type="primary", use_container_width=True):
-            if user_input and api_key:
-                st.session_state.chat_history.append({'role':'user','content':user_input})
-                try:
-                    ans, srcs = rag_answer(user_input, rag_index, saas, api_key, ranked_df=top_df, product=sel_prod)
-                    st.session_state.chat_history.append(
-                        {'role':'assistant','content':ans,'sources':srcs})
-                except Exception as e:
-                    st.session_state.chat_history.append(
-                        {'role':'assistant','content':f"Error: {e}",'sources':[]})
-                st.rerun()
-    with col_clr:
-        if st.button("Clear", use_container_width=True):
-            st.session_state.chat_history = []
-            st.rerun()
-
-    if not api_key:
-        st.warning("OpenAI API key not found. Add OPENAI_API_KEY to Streamlit secrets.")
-
-# Chat button — labeled and prominent
-col_spacer, col_chat = st.columns([6, 4])
-with col_chat:
-    if st.button("🤖 Ask AI Sales Assistant", type="primary",
-                 use_container_width=True, key="chat_open_btn"):
-        show_chat()
+# Chat moved to sidebar — always visible, never closes
 
 # ── TABS ───────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4 = st.tabs([
