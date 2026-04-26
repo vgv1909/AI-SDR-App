@@ -316,9 +316,11 @@ def train_unified_model(_df_ml, _df_en, _saas):
     sw = (yt == 0).sum() / (yt == 1).sum()
 
     model = XGBClassifier(
-        n_estimators=200, max_depth=4, learning_rate=0.05,
-        scale_pos_weight=sw, random_state=42,
-        eval_metric='logloss', verbosity=0
+        n_estimators=100, max_depth=3, learning_rate=0.05,
+        scale_pos_weight=sw, min_child_weight=10,
+        subsample=0.8, colsample_bytree=0.8,
+        reg_alpha=1.0, reg_lambda=5.0, gamma=1.0,
+        random_state=42, eval_metric='logloss', verbosity=0
     )
     model.fit(Xt, yt)
     auc = round(roc_auc_score(ye, model.predict_proba(Xe)[:, 1]), 4)
@@ -368,11 +370,18 @@ def build_rag(_df_en, _df_ml, _saas, _model, _le, fc_tuple, final_fc_tuple):
     df_ml    = _df_ml.copy()
     df_ml['converted'] = build_converted(df_ml)
 
-    _, fit_cm = build_product_label('ContactMatcher', _df_en, _saas)
-    X_cm = df_ml[fc].copy()
-    X_cm['product_enc']        = int(_le.transform(['ContactMatcher'])[0])
-    X_cm['industry_fit_score'] = fit_cm.values
-    probs = _model.predict_proba(X_cm[final_fc])[:, 1]
+    # Build RAG with scores from ALL products combined
+    # so the chatbot can answer questions about any product
+    all_probs = {}
+    for prod in sorted(_saas['Product'].unique()):
+        _, fit_prod = build_product_label(prod, _df_en, _saas)
+        X_prod = df_ml[fc].copy()
+        X_prod['product_enc']        = int(_le.transform([prod])[0])
+        X_prod['industry_fit_score'] = fit_prod.values
+        all_probs[prod] = _model.predict_proba(X_prod[final_fc])[:, 1]
+
+    # Use average score across all products as general conversion signal
+    probs = np.mean(list(all_probs.values()), axis=0)
 
     docs, metas = [], []
     for i, (_, row) in enumerate(_df_en.iterrows()):
@@ -389,13 +398,17 @@ def build_rag(_df_en, _df_ml, _saas, _model, _le, fc_tuple, final_fc_tuple):
         if reply > 20:   urgency.append(f'high reply rate {reply:.1f}%')
         if days < 30:    urgency.append(f'contacted {days}d ago')
 
+        # Add per-product scores so chatbot answers are product-specific
+        prod_scores = ' | '.join([f'{p}: {all_probs[p][i]:.1%}' 
+                                   for p in sorted(all_probs.keys())])
         doc = '\n'.join([
             f'Company: {row.get("name","?")}',
             f'Industry: {row.get("industry","?")} | Country: {row.get("country_code","?")} | Size: {row.get("employee_range","?")}',
             f'Funding: ${funding:,.0f} | {"recently funded" if funded else "no recent funding"}',
             f'Hiring: {"yes" if hiring else "no"} | Reply rate: {reply:.1f}%',
             f'Days since contact: {days} | Deal potential: ${deal:,.0f}',
-            f'Conversion probability: {probs[i]:.1%}',
+            f'Overall conversion probability: {probs[i]:.1%}',
+            f'Per-product scores: {prod_scores}',
             f'Urgency: {", ".join(urgency) if urgency else "none"}',
         ])
         docs.append(doc)
@@ -481,7 +494,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("**🔍 Filters:**")
-    top_k = st.slider("Top N Companies:", 5, 50, 10)
+    top_k = st.slider("Top N Companies:", 10, 100, 20)
 
     all_countries  = ['All'] + sorted(df_en['country_code'].dropna().unique().tolist())
     all_industries = ['All'] + sorted(df_en['industry'].dropna().unique().tolist())
