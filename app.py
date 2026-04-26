@@ -459,15 +459,23 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Product selector with descriptions
+    # Product selector — dropdown with icon + description
     st.markdown("**📦 Select Product:**")
     all_prods = sorted(saas['Product'].unique().tolist())
-    for i, prod in enumerate(all_prods):
+    prod_labels = []
+    for prod in all_prods:
         info = PRODUCT_INFO.get(prod, {'icon':'📦','desc':'SaaS product'})
-        if st.button(f"{info['icon']} {prod}", key=f"prod_{i}", use_container_width=True,
-                     type="primary" if st.session_state.get('sel_prod','ContactMatcher')==prod else "secondary"):
-            st.session_state.sel_prod = prod
-    sel_prod = st.session_state.get('sel_prod','ContactMatcher')
+        prod_labels.append(f"{info['icon']} {prod}  ·  {info['desc']}")
+
+    default_prod = st.session_state.get('sel_prod', 'ContactMatcher')
+    default_idx  = all_prods.index(default_prod) if default_prod in all_prods else 0
+
+    chosen_label = st.selectbox(
+        "Product", prod_labels, index=default_idx,
+        label_visibility="collapsed"
+    )
+    sel_prod = all_prods[prod_labels.index(chosen_label)]
+    st.session_state.sel_prod = sel_prod
 
     st.markdown("---")
 
@@ -668,16 +676,7 @@ with tab_top:
             ci_h    = min(1, prob + np.random.uniform(0.03,0.07))
             is_fav  = row['name'] in st.session_state.favorites
 
-            col_logo, col_info, col_action = st.columns([1, 8, 2])
-
-            with col_logo:
-                logo_url = get_logo_url(row['name'], row.get('website',''))
-                st.markdown(f"""
-                <img src="{logo_url}" width="50" height="50"
-                     style="border-radius:8px;object-fit:contain;border:1px solid {BORDER};
-                            background:white;padding:4px;"
-                     onerror="this.style.display='none'">
-                """, unsafe_allow_html=True)
+            col_info, col_action = st.columns([9, 2])
 
             with col_info:
                 website  = row.get('website','')
@@ -736,29 +735,32 @@ with tab_top:
                             st.session_state.compare_list.append(row['name'])
                             st.rerun()
 
-        # Compare
-        if len(st.session_state.compare_list) >= 2:
-            st.markdown("---")
-            st.markdown("### 🔄 Company Comparison")
-            comp_cols = st.columns(len(st.session_state.compare_list))
-            for ci, cname in enumerate(st.session_state.compare_list):
-                crow = df_r[df_r['name']==cname]
-                if len(crow) > 0:
-                    crow = crow.iloc[0]
-                    with comp_cols[ci]:
-                        st.markdown(f"""
-                        <div class="company-card" style="text-align:center">
-                        <b>{cname}</b><br>
-                        <span style="color:{SUB}">{crow.get('industry','—')}</span><br><br>
-                        Conv: <b>{crow['conversion_prob']:.1%}</b><br>
-                        Fit: <b>{crow['product_fit_score']:.1f}/100</b><br>
-                        Score: <b>{crow['combined_score']:.3f}</b><br>
-                        {'✅ Hiring' if crow.get('active_hiring',0) else '❌ Not Hiring'}<br>
-                        {'✅ Funded' if crow.get('recent_funding_event',0) else '❌ No Funding'}
-                        </div>""", unsafe_allow_html=True)
-            if st.button("Clear Compare List"):
-                st.session_state.compare_list = []
-                st.rerun()
+# Compare panel — always visible when items added
+if len(st.session_state.compare_list) >= 2:
+    st.markdown("---")
+    st.markdown("### 🔄 Company Comparison")
+    st.caption(f"Comparing {len(st.session_state.compare_list)} companies — click 📊 on any company card to add more (max 3)")
+    comp_cols = st.columns(len(st.session_state.compare_list))
+    for ci, cname in enumerate(st.session_state.compare_list):
+        crow = df_r[df_r['name']==cname]
+        if len(crow) > 0:
+            crow = crow.iloc[0]
+            with comp_cols[ci]:
+                st.markdown(f"""
+                <div class="company-card" style="text-align:center;padding:20px">
+                <b style="font-size:1.05rem">{cname}</b><br>
+                <span style="color:{SUB};font-size:0.85rem">{crow.get('industry','—')} · {crow.get('country_code','')}</span><br><br>
+                <span style="font-size:1.1rem;color:{PRIMARY}"><b>{crow['conversion_prob']:.1%}</b></span><br>
+                <span style="font-size:0.8rem;color:{SUB}">Conversion Prob</span><br><br>
+                Fit Score: <b>{crow['product_fit_score']:.1f}/100</b><br>
+                Combined: <b>{crow['combined_score']:.3f}</b><br>
+                Deal Value: <b>${crow.get('deal_potential_usd',0):,.0f}</b><br><br>
+                {'✅ Hiring' if crow.get('active_hiring',0) else '❌ Not Hiring'}<br>
+                {'✅ Recently Funded' if crow.get('recent_funding_event',0) else '❌ No Recent Funding'}
+                </div>""", unsafe_allow_html=True)
+    if st.button("🗑️ Clear Compare List", key="clear_compare"):
+        st.session_state.compare_list = []
+        st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 2 — AI SALES ASSISTANT
