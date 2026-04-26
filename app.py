@@ -686,11 +686,6 @@ def show_chat():
         st.warning("OpenAI API key not found. Add OPENAI_API_KEY to Streamlit secrets.")
 
 # Chat button — labeled and prominent
-# Auto-reopen after suggestion click
-if st.session_state.get('reopen_chat', False):
-    st.session_state.reopen_chat = False
-    show_chat()
-
 col_spacer, col_chat = st.columns([6, 4])
 with col_chat:
     if st.button("🤖 Ask AI Sales Assistant", type="primary",
