@@ -46,6 +46,53 @@ st.markdown(f"""
 <style>
     .stApp {{ background-color: {BG}; }}
     * {{ color: {TEXT} !important; }}
+
+    /* ── Sidebar: remove default top padding so header sits higher ── */
+    section[data-testid="stSidebar"] > div:first-child {{
+        padding-top: 0.75rem !important;
+    }}
+
+    /* ── Sidebar: force correct text colors in dark mode ── */
+    section[data-testid="stSidebar"] {{
+        background-color: {'#1E293B' if DK else '#FFFFFF'} !important;
+    }}
+    section[data-testid="stSidebar"] * {{
+        color: {TEXT} !important;
+    }}
+    section[data-testid="stSidebar"] .stMarkdown p,
+    section[data-testid="stSidebar"] .stMarkdown span,
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] .stSelectbox label,
+    section[data-testid="stSidebar"] .stSlider label,
+    section[data-testid="stSidebar"] .stTextInput label,
+    section[data-testid="stSidebar"] .stTextInput input {{
+        color: {TEXT} !important;
+    }}
+    /* Sidebar selectbox / text input backgrounds */
+    section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div,
+    section[data-testid="stSidebar"] .stTextInput input {{
+        background-color: {'#0F172A' if DK else '#F8FAFC'} !important;
+        color: {TEXT} !important;
+        border-color: {BORDER} !important;
+    }}
+    /* Sidebar button text */
+    section[data-testid="stSidebar"] button {{
+        color: {TEXT} !important;
+        border-color: {BORDER} !important;
+    }}
+    section[data-testid="stSidebar"] button[kind="primary"] {{
+        background-color: {PRIMARY} !important;
+        color: white !important;
+        border-color: {PRIMARY} !important;
+    }}
+    section[data-testid="stSidebar"] button[kind="secondary"] {{
+        background-color: {'#0F172A' if DK else '#F8FAFC'} !important;
+        color: {TEXT} !important;
+    }}
+    /* Sidebar slider track + thumb */
+    section[data-testid="stSidebar"] .stSlider [data-testid="stThumbValue"] {{
+        color: {TEXT} !important;
+    }}
     .metric-card {{
         background:{CARD}; padding:20px; border-radius:14px;
         box-shadow:0 4px 12px rgba(0,0,0,0.1); text-align:center;
