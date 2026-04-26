@@ -427,13 +427,39 @@ def build_rag(_df_en, _df_ml, _saas, _model, _le, fc_tuple, final_fc_tuple):
     matrix = vec.fit_transform(docs)
     return {'docs':docs,'metas':metas,'vectorizer':vec,'matrix':matrix}
 
-def rag_answer(query, rag_index, saas, api_key, top_k=8):
+def rag_answer(query, rag_index, saas, api_key, top_k=8, ranked_df=None, product=None):
     from sklearn.metrics.pairwise import cosine_similarity
     from openai import OpenAI
-    q_vec   = rag_index['vectorizer'].transform([query])
-    scores  = cosine_similarity(q_vec, rag_index['matrix']).flatten()
-    idx     = np.argsort(scores)[::-1][:top_k]
-    results = [{'doc':rag_index['docs'][i],'meta':rag_index['metas'][i]} for i in idx]
+
+    # If we have ranked companies for a specific product, use TOP ranked as context
+    # This ensures the chatbot always references the highest-scored companies
+    if ranked_df is not None and len(ranked_df) > 0:
+        top_companies = set(ranked_df.head(20)['name'].str.lower().tolist())
+        # Filter rag_index metas to only top ranked companies
+        top_results = []
+        for i, meta in enumerate(rag_index['metas']):
+            if meta['name'].lower() in top_companies:
+                top_results.append({'doc': rag_index['docs'][i], 'meta': meta})
+        # Sort by conv_prob descending
+        top_results = sorted(top_results, key=lambda x: x['meta']['conv_prob'], reverse=True)[:top_k]
+        # Fill remaining slots with TF-IDF results if needed
+        if len(top_results) < top_k:
+            q_vec  = rag_index['vectorizer'].transform([query])
+            scores = cosine_similarity(q_vec, rag_index['matrix']).flatten()
+            extra_idx = np.argsort(scores)[::-1]
+            existing = {r['meta']['name'] for r in top_results}
+            for i in extra_idx:
+                if rag_index['metas'][i]['name'] not in existing:
+                    top_results.append({'doc':rag_index['docs'][i],'meta':rag_index['metas'][i]})
+                if len(top_results) >= top_k: break
+        results = top_results
+    else:
+        # Fallback to TF-IDF retrieval
+        q_vec   = rag_index['vectorizer'].transform([query])
+        scores  = cosine_similarity(q_vec, rag_index['matrix']).flatten()
+        idx     = np.argsort(scores)[::-1][:top_k]
+        results = [{'doc':rag_index['docs'][i],'meta':rag_index['metas'][i]} for i in idx]
+
     context = '\n\n---\n\n'.join([r['doc'] for r in results])
 
     prod_stats = saas.groupby('Product').agg(
@@ -612,7 +638,7 @@ def show_chat():
                 st.session_state.chat_history.append({'role':'user','content':s})
                 if api_key:
                     try:
-                        ans, srcs = rag_answer(s, rag_index, saas, api_key)
+                        ans, srcs = rag_answer(s, rag_index, saas, api_key, ranked_df=top_df, product=sel_prod)
                         st.session_state.chat_history.append(
                             {'role':'assistant','content':ans,'sources':srcs})
                     except Exception as e:
@@ -648,7 +674,7 @@ def show_chat():
             if user_input and api_key:
                 st.session_state.chat_history.append({'role':'user','content':user_input})
                 try:
-                    ans, srcs = rag_answer(user_input, rag_index, saas, api_key)
+                    ans, srcs = rag_answer(user_input, rag_index, saas, api_key, ranked_df=top_df, product=sel_prod)
                     st.session_state.chat_history.append(
                         {'role':'assistant','content':ans,'sources':srcs})
                 except Exception as e:
