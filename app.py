@@ -1072,3 +1072,176 @@ with tab3:
           </span>
         </div>
         """, unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════
+    # RANK DIVERGENCE — paste this at the very bottom of `with tab3:` block
+    # ══════════════════════════════════════════════════════════════════════════
+
+    st.markdown("---")
+    st.markdown("#### 📊 Rank Divergence Across Products")
+    st.markdown(
+        f'<div class="info-box">'
+        f'If AI-SDR truly captures <b>product-specific</b> fit — not just "strong companies" — '
+        f'then the same company should rank very differently across products. '
+        f'Dark = high rank (top prospect). Light = low rank. '
+        f'Crossing lines in the bump chart = genuine product differentiation.'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    @st.cache_data
+    def build_rank_matrix(_df_en, _df_ml, _saas, fc_tuple, final_fc_tuple, _model, _le, n_companies=20):
+        """
+        Build a (n_companies × 14 products) rank matrix.
+        Uses the globally top-scoring companies across all products as the row set.
+        """
+        fc       = list(fc_tuple)
+        final_fc = list(final_fc_tuple)
+        products = sorted(_saas["Product"].unique().tolist())
+
+        # Collect ranks per product
+        rank_data = {}
+        for prod in products:
+            ranked = rank_for_product(
+                _df_en, _df_ml, prod, _saas,
+                fc_tuple, final_fc_tuple, _model, _le,
+            )
+            # rank = position in sorted list (1 = best)
+            rank_data[prod] = dict(zip(ranked["name"], range(1, len(ranked) + 1)))
+
+        # Pick top-N companies by average rank across all products
+        all_names = _df_en["name"].tolist()
+        avg_ranks = {}
+        for name in all_names:
+            avg_ranks[name] = np.mean([rank_data[p].get(name, 1000) for p in products])
+        top_names = sorted(avg_ranks, key=avg_ranks.get)[:n_companies]
+
+        # Build matrix
+        matrix = pd.DataFrame(index=top_names, columns=products)
+        for prod in products:
+            for name in top_names:
+                matrix.loc[name, prod] = rank_data[prod].get(name, 1000)
+        return matrix.astype(int)
+
+    with st.spinner("Computing ranks across all 14 products…"):
+        rank_matrix = build_rank_matrix(
+            df_en, df_ml, saas,
+            tuple(fc), tuple(final_fc), model, le_prod,
+            n_companies=20,
+        )
+
+    # ── Heatmap ───────────────────────────────────────────────────────────────
+    st.markdown("**Rank Heatmap — Top 20 Companies × 14 Products**")
+    st.caption("Dark green = ranked high (top prospect). Light = ranked low. "
+               "Rows that aren't uniformly dark prove product-specific differentiation.")
+
+    fig_heat = go.Figure(go.Heatmap(
+        z=rank_matrix.values,
+        x=[p[:18] for p in rank_matrix.columns],
+        y=rank_matrix.index.tolist(),
+        colorscale=[
+            [0.0,  "#064e3b"],   # rank 1   = darkest green
+            [0.15, "#10B981"],   # rank ~30
+            [0.35, "#6EE7B7"],   # rank ~70
+            [0.6,  "#D1FAE5"],   # rank ~120
+            [1.0,  "#F8FAFC"],   # rank 1000 = near white
+        ],
+        reversescale=False,
+        text=rank_matrix.values,
+        texttemplate="%{text}",
+        textfont={"size": 8},
+        hovertemplate="<b>%{y}</b><br>Product: %{x}<br>Rank: %{z}<extra></extra>",
+        showscale=True,
+        colorbar=dict(title="Rank", tickvals=[1, 50, 100, 200, 500],
+                      ticktext=["#1","#50","#100","#200","#500+"]),
+    ))
+    fig_heat.update_layout(
+        height=520,
+        margin=dict(l=0, r=0, t=10, b=120),
+        xaxis=dict(tickangle=-35, tickfont=dict(size=10)),
+        yaxis=dict(tickfont=dict(size=10), autorange="reversed"),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#111827"),
+    )
+    st.plotly_chart(fig_heat, use_container_width=True)
+
+    # ── Bump Chart ────────────────────────────────────────────────────────────
+    st.markdown("**Rank Bump Chart — How Companies Move Across Products**")
+    st.caption("Crossing lines = a company that is a top prospect for one product "
+               "but weak for another. Flat lines = model is NOT differentiating by product.")
+
+    # Pick top 10 for readability
+    top10 = rank_matrix.head(10)
+    products_list = rank_matrix.columns.tolist()
+
+    # Color palette — 10 distinct colours
+    colors = [
+        "#10B981","#3B82F6","#F59E0B","#EF4444","#8B5CF6",
+        "#06B6D4","#84CC16","#F97316","#EC4899","#64748B",
+    ]
+
+    fig_bump = go.Figure()
+    for i, (company, row) in enumerate(top10.iterrows()):
+        ranks = [row[p] for p in products_list]
+        fig_bump.add_trace(go.Scatter(
+            x=[p[:14] for p in products_list],
+            y=ranks,
+            mode="lines+markers",
+            name=company[:28],
+            line=dict(color=colors[i % len(colors)], width=2),
+            marker=dict(size=7, color=colors[i % len(colors)]),
+            hovertemplate=f"<b>{company}</b><br>Product: %{{x}}<br>Rank: %{{y}}<extra></extra>",
+        ))
+
+    fig_bump.update_layout(
+        height=440,
+        margin=dict(l=0, r=180, t=10, b=80),
+        xaxis=dict(tickangle=-35, tickfont=dict(size=10), title="Product"),
+        yaxis=dict(
+            title="Rank (lower = better)",
+            autorange="reversed",
+            tickfont=dict(size=10),
+        ),
+        legend=dict(
+            orientation="v", x=1.01, y=1,
+            font=dict(size=9), bgcolor="rgba(0,0,0,0)",
+        ),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#111827"),
+    )
+    st.plotly_chart(fig_bump, use_container_width=True)
+
+    # ── Divergence stats ──────────────────────────────────────────────────────
+    st.markdown("**Divergence Summary**")
+    rank_std   = rank_matrix.std(axis=1).round(1)
+    rank_range = (rank_matrix.max(axis=1) - rank_matrix.min(axis=1))
+    divergence_df = pd.DataFrame({
+        "Company"           : rank_matrix.index,
+        "Best Rank"         : rank_matrix.min(axis=1).values,
+        "Best Product"      : [rank_matrix.columns[rank_matrix.loc[c].argmin()] for c in rank_matrix.index],
+        "Worst Rank"        : rank_matrix.max(axis=1).values,
+        "Worst Product"     : [rank_matrix.columns[rank_matrix.loc[c].argmax()] for c in rank_matrix.index],
+        "Rank Range"        : rank_range.values,
+        "Std Dev"           : rank_std.values,
+    }).sort_values("Rank Range", ascending=False).reset_index(drop=True)
+
+    st.dataframe(
+        divergence_df.style.background_gradient(
+            subset=["Rank Range", "Std Dev"], cmap="Greens"
+        ).format({"Rank Range": "{:.0f}", "Std Dev": "{:.1f}"}),
+        use_container_width=True, hide_index=True,
+    )
+
+    st.markdown(f"""
+    <div class="info-box">
+      <b>How to read this:</b> A company with <b>Rank Range = 150</b> ranks #5 for one product
+      and #155 for another — that is genuine product-specific differentiation.
+      A company with Rank Range ≈ 0 ranks the same everywhere — that is the
+      "strong company, not product match" pattern the reviewer flagged.
+      <br><br>
+      High divergence = the model IS doing product-specific work.
+      Low divergence = the reviewer's concern is valid for that company.
+    </div>
+    """, unsafe_allow_html=True)
