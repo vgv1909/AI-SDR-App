@@ -398,8 +398,9 @@ def build_rag(_df_en, _df_ml, _saas, _model, _le, fc_tuple, final_fc_tuple):
         if reply > 20:   urgency.append(f'high reply rate {reply:.1f}%')
         if days < 30:    urgency.append(f'contacted {days}d ago')
 
+        rank_position = i + 1  # rank within the full 1000 company list
         doc = '\n'.join([
-            f'Company: {row.get("name","?")}',
+            f'Rank #{rank_position} | Company: {row.get("name","?")}',
             f'Industry: {row.get("industry","?")} | Country: {row.get("country_code","?")} | Size: {row.get("employee_range","?")}',
             f'Funding: ${funding:,.0f} | {"recently funded" if funded else "no recent funding"}',
             f'Hiring: {"yes" if hiring else "no"} | Reply rate: {reply:.1f}%',
@@ -431,13 +432,18 @@ def rag_answer(query, rag_index, saas, api_key, top_k=8, ranked_df=None, product
     # This ensures the chatbot always references the highest-scored companies
     if ranked_df is not None and len(ranked_df) > 0:
         top_companies = set(ranked_df.head(20)['name'].str.lower().tolist())
-        # Filter rag_index metas to only top ranked companies
-        top_results = []
+        # Build results in EXACT rank order from ranked_df
+        name_to_rag = {}
         for i, meta in enumerate(rag_index['metas']):
-            if meta['name'].lower() in top_companies:
-                top_results.append({'doc': rag_index['docs'][i], 'meta': meta})
-        # Sort by conv_prob descending
-        top_results = sorted(top_results, key=lambda x: x['meta']['conv_prob'], reverse=True)[:top_k]
+            name_to_rag[meta['name'].lower()] = {'doc': rag_index['docs'][i], 'meta': meta}
+
+        top_results = []
+        for name in ranked_df.head(top_k * 2)['name'].tolist():
+            key = name.lower()
+            if key in name_to_rag:
+                top_results.append(name_to_rag[key])
+            if len(top_results) >= top_k:
+                break
         # Fill remaining slots with TF-IDF results if needed
         if len(top_results) < top_k:
             q_vec  = rag_index['vectorizer'].transform([query])
@@ -472,12 +478,14 @@ def rag_answer(query, rag_index, saas, api_key, top_k=8, ranked_df=None, product
                 'You are an AI Sales Development Representative assistant.\n'
                 'Help SDRs prioritize B2B accounts with data-driven insights.\n\n'
                 f'PRODUCT CATALOG:\n{prod_ctx}\n\n'
-                'Rules:\n'
-                '1. Answer ONLY based on the company profiles provided\n'
-                '2. Always mention company name, industry, conversion probability, key signals\n'
-                '3. Be specific and actionable — tell the SDR exactly what to do\n'
-                '4. For cold email requests, write a complete professional email\n'
-                '5. For comparisons, use a clear structured format'
+                'CRITICAL RULES:\n'
+                '1. Companies are provided IN RANK ORDER — Rank #1 is the top priority\n'
+                '2. When asked who to call, ALWAYS recommend Rank #1 first\n'
+                '3. NEVER skip to a lower-ranked company over a higher one\n'
+                '4. Always state rank, company name, industry, conversion probability\n'
+                '5. Be specific and actionable\n'
+                '6. For cold emails, write a complete professional email\n'
+                '7. For comparisons, use a clear structured format'
             )},
             {'role':'user','content':f'Context:\n{context}\n\nQuestion: {query}'}
         ],
