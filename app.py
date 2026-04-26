@@ -44,55 +44,159 @@ RED     = '#EF4444'
 
 st.markdown(f"""
 <style>
-    .stApp {{ background-color: {BG}; }}
+    /* ══ BASE ══════════════════════════════════════════════════════════════════ */
+    .stApp {{ background-color: {BG} !important; }}
     * {{ color: {TEXT} !important; }}
 
-    /* ── Sidebar: remove default top padding so header sits higher ── */
+    /* ══ SIDEBAR ═══════════════════════════════════════════════════════════════ */
     section[data-testid="stSidebar"] > div:first-child {{
         padding-top: 0.75rem !important;
     }}
-
-    /* ── Sidebar: force correct text colors in dark mode ── */
     section[data-testid="stSidebar"] {{
         background-color: {'#1E293B' if DK else '#FFFFFF'} !important;
     }}
     section[data-testid="stSidebar"] * {{
         color: {TEXT} !important;
     }}
-    section[data-testid="stSidebar"] .stMarkdown p,
-    section[data-testid="stSidebar"] .stMarkdown span,
     section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] .stSelectbox label,
-    section[data-testid="stSidebar"] .stSlider label,
-    section[data-testid="stSidebar"] .stTextInput label,
-    section[data-testid="stSidebar"] .stTextInput input {{
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] span {{
         color: {TEXT} !important;
     }}
-    /* Sidebar selectbox / text input backgrounds */
-    section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div,
-    section[data-testid="stSidebar"] .stTextInput input {{
+    /* Sidebar selectbox box */
+    section[data-testid="stSidebar"] div[data-baseweb="select"] > div {{
+        background-color: {'#0F172A' if DK else '#F8FAFC'} !important;
+        border-color: {BORDER} !important;
+    }}
+    /* Sidebar text input */
+    section[data-testid="stSidebar"] input {{
         background-color: {'#0F172A' if DK else '#F8FAFC'} !important;
         color: {TEXT} !important;
         border-color: {BORDER} !important;
     }}
-    /* Sidebar button text */
-    section[data-testid="stSidebar"] button {{
-        color: {TEXT} !important;
+
+    /* ══ GLOBAL SELECTBOX (all tabs + sidebar) ═══════════════════════════════ */
+    /* The control box */
+    div[data-baseweb="select"] > div {{
+        background-color: {'#0F172A' if DK else '#FFFFFF'} !important;
         border-color: {BORDER} !important;
+        color: {TEXT} !important;
     }}
-    section[data-testid="stSidebar"] button[kind="primary"] {{
+    div[data-baseweb="select"] span,
+    div[data-baseweb="select"] div {{
+        color: {TEXT} !important;
+    }}
+    /* The dropdown popup list */
+    ul[data-baseweb="menu"],
+    div[data-baseweb="popover"] ul,
+    div[data-baseweb="menu"] {{
+        background-color: {'#1E293B' if DK else '#FFFFFF'} !important;
+        border: 1px solid {BORDER} !important;
+    }}
+    li[role="option"],
+    div[data-baseweb="menu"] li {{
+        background-color: {'#1E293B' if DK else '#FFFFFF'} !important;
+        color: {TEXT} !important;
+    }}
+    li[role="option"]:hover,
+    div[data-baseweb="menu"] li:hover {{
+        background-color: {'#0F172A' if DK else '#F1F5F9'} !important;
+    }}
+    li[aria-selected="true"] {{
+        background-color: {'#064e3b' if DK else '#ECFDF5'} !important;
+    }}
+
+    /* ══ DOWNLOAD / ACTION BUTTONS ═══════════════════════════════════════════ */
+    /* Download button */
+    .stDownloadButton > button {{
+        background-color: {'#1E293B' if DK else '#F1F5F9'} !important;
+        color: {TEXT} !important;
+        border: 1px solid {BORDER} !important;
+    }}
+    .stDownloadButton > button:hover {{
+        border-color: {PRIMARY} !important;
+        background-color: {'#064e3b' if DK else '#ECFDF5'} !important;
+    }}
+    /* Generic secondary buttons (fav, compare, suggestions) */
+    button[kind="secondary"] {{
+        background-color: {'#1E293B' if DK else '#F8FAFC'} !important;
+        color: {TEXT} !important;
+        border: 1px solid {BORDER} !important;
+    }}
+    button[kind="secondary"]:hover {{
+        border-color: {PRIMARY} !important;
+        background-color: {'#064e3b' if DK else '#ECFDF5'} !important;
+    }}
+    button[kind="primary"] {{
         background-color: {PRIMARY} !important;
         color: white !important;
         border-color: {PRIMARY} !important;
     }}
-    section[data-testid="stSidebar"] button[kind="secondary"] {{
-        background-color: {'#0F172A' if DK else '#F8FAFC'} !important;
+
+    /* ══ CODE BLOCKS (st.code, st.markdown code) ═════════════════════════════ */
+    .stCode, pre, code,
+    div[data-testid="stCode"] pre,
+    div[data-testid="stCode"] code {{
+        background-color: {'#0F172A' if DK else '#F1F5F9'} !important;
+        color: {'#6EE7B7' if DK else '#065f46'} !important;
+        border: 1px solid {BORDER} !important;
+        border-radius: 8px !important;
+    }}
+    /* inline code spans in markdown */
+    p code, li code {{
+        background-color: {'#1E293B' if DK else '#F1F5F9'} !important;
+        color: {PRIMARY} !important;
+        padding: 2px 6px !important;
+        border-radius: 4px !important;
+    }}
+
+    /* ══ TABS ════════════════════════════════════════════════════════════════ */
+    .stTabs [data-baseweb="tab-list"] {{
+        background-color: {'#1E293B' if DK else '#F8FAFC'} !important;
+        border-radius: 10px !important;
+        padding: 4px !important;
+    }}
+    .stTabs [data-baseweb="tab"] {{
+        font-weight: 600 !important;
+        font-size: 0.9rem !important;
+        color: {TEXT} !important;
+        background-color: transparent !important;
+    }}
+    .stTabs [aria-selected="true"] {{
+        color: {PRIMARY} !important;
+        border-bottom: 3px solid {PRIMARY} !important;
+        background-color: {'#064e3b22' if DK else '#ECFDF5'} !important;
+    }}
+
+    /* ══ GENERAL TEXT / MARKDOWN ═════════════════════════════════════════════ */
+    .stMarkdown, .stMarkdown p, .stMarkdown h1,
+    .stMarkdown h2, .stMarkdown h3, .stMarkdown h4,
+    .stMarkdown li, .stMarkdown span,
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] span,
+    [data-testid="stMarkdownContainer"] h1,
+    [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stMarkdownContainer"] h3 {{
         color: {TEXT} !important;
     }}
-    /* Sidebar slider track + thumb */
-    section[data-testid="stSidebar"] .stSlider [data-testid="stThumbValue"] {{
+    /* st.caption */
+    .stCaptionContainer, .stCaptionContainer p {{
+        color: {SUB} !important;
+    }}
+    /* st.metric */
+    [data-testid="stMetricValue"],
+    [data-testid="stMetricLabel"],
+    [data-testid="stMetricDelta"] {{
         color: {TEXT} !important;
     }}
+
+    /* ══ TEXT INPUT (main area) ══════════════════════════════════════════════ */
+    .stTextInput input {{
+        background-color: {'#1E293B' if DK else '#FFFFFF'} !important;
+        color: {TEXT} !important;
+        border-color: {BORDER} !important;
+    }}
+
     .metric-card {{
         background:{CARD}; padding:20px; border-radius:14px;
         box-shadow:0 4px 12px rgba(0,0,0,0.1); text-align:center;
