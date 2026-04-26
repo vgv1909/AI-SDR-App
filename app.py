@@ -477,7 +477,7 @@ def rag_answer(query, rag_index, saas, api_key, top_k=8, ranked_df=None, product
         ],
         max_tokens=600, temperature=0.3,
     )
-    return response.choices[0].message.content, [r['meta']['name'] for r in results[:3]]
+    return response.choices[0].message.content, sources
 
 def why_text(shap_row, feature_names):
     s = pd.Series(shap_row, index=feature_names).sort_values(ascending=False)
@@ -524,14 +524,6 @@ with st.sidebar:
     search = st.text_input("🔎 Search Company:", placeholder="Type name...")
 
     st.markdown("---")
-    st.markdown(f"""
-    <div style='background:{LIGHT};border:1px solid #A7F3D0;border-radius:10px;padding:12px;text-align:center'>
-        <div style='font-size:0.75rem;color:{SUB};margin-bottom:4px'>Model Performance</div>
-        <div style='font-size:1.4rem;font-weight:800;color:{PRIMARY}'>ROC-AUC {auc}</div>
-        <div style='font-size:0.72rem;color:{SUB}'>XGBoost · Unified Model</div>
-    </div>
-    """, unsafe_allow_html=True)
-
     st.markdown("---")
     st.markdown(f"### 🤖 AI Sales Assistant")
     st.markdown(f"<small style='color:{SUB}'>Answers based on your current top ranked companies</small>",
