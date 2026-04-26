@@ -212,6 +212,27 @@ TEAM = [
      ]},
 ]
 
+# ── Helper Functions ───────────────────────────────────────────────────────────
+
+def why_text(sv, feature_cols):
+    """Generate a short explanation string from SHAP values for a single company row."""
+    feat_shap = pd.Series(sv, index=list(feature_cols)).sort_values(ascending=False)
+    parts = []
+    for feat, val in feat_shap.head(3).items():
+        label = FEATURE_LABELS.get(feat, feat)
+        if val > 0:
+            parts.append(f"{label} ↑")
+    return ' · '.join(parts) if parts else 'Strong overall profile'
+
+
+def get_logo_url(company_name, website=None):
+    if website and str(website) not in ('', 'nan'):
+        domain = str(website).replace('https://','').replace('http://','').replace('www.','').split('/')[0]
+        return f"https://logo.clearbit.com/{domain}"
+    clean = company_name.lower().replace(' ','.').replace(',','').replace("'","")
+    return f"https://logo.clearbit.com/{clean}.com"
+
+
 # ── Data Loading ──────────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
@@ -219,6 +240,7 @@ def load_data():
     df_ml = pd.read_csv('crunchbase_ml_ready.csv')
     saas  = pd.read_csv('SaaS-Sales.csv')
     return df_en, df_ml, saas
+
 
 @st.cache_resource
 def train_model(_df_ml, fc):
@@ -230,6 +252,14 @@ def train_model(_df_ml, fc):
     m.fit(Xt, yt)
     auc = roc_auc_score(ye, m.predict_proba(Xe)[:,1])
     return m, round(auc, 4)
+
+
+@st.cache_resource
+def compute_shap_cached(_model, _X):
+    """Compute SHAP values for all rows. Returns 2D array (n_samples × n_features)."""
+    explainer = shap.TreeExplainer(_model)
+    return explainer.shap_values(_X)
+
 
 def get_fit_score(product, df_en, df_ml, saas, fc):
     ps     = saas[saas['Product']==product]
@@ -250,25 +280,18 @@ def get_fit_score(product, df_en, df_ml, saas, fc):
         np.random.normal(0, 3, len(df_ml))
     ).clip(0, 100).round(2)
 
-@st.cache_resource
-def compute_shap(_model, _X_all):
-    explainer = shap.TreeExplainer(_model)
-    sv        = explainer.shap_values(_X_all)
-    return sv
-    df_sv = pd.Series(sv, index=fc).sort_values(ascending=False)
-    top   = df_sv.head(3)
-    parts = []
-    for feat, val in top.items():
-        label = FEATURE_LABELS.get(feat, feat)
-        if val > 0: parts.append(f"{label} ↑")
-    return ' · '.join(parts) if parts else 'Strong overall profile'
 
-def get_logo_url(company_name, website=None):
-    if website:
-        domain = website.replace('https://','').replace('http://','').replace('www.','').split('/')[0]
-        return f"https://logo.clearbit.com/{domain}"
-    clean = company_name.lower().replace(' ','.').replace(',','').replace("'","")
-    return f"https://logo.clearbit.com/{clean}.com"
+@st.cache_data
+def compute_scores(_df_ml, _df_en, product, _saas, fc_tuple, _model):
+    fc = list(fc_tuple)
+    df_c = _df_ml.copy()
+    df_c['product_fit_score'] = get_fit_score(product, _df_en, df_c, _saas, fc)
+    X_all = df_c[fc]
+    cp    = _model.predict_proba(X_all)[:,1]
+    fs    = df_c['product_fit_score'].values
+    cs    = cp * 0.6 + fs / 100 * 0.4
+    return cp, fs, cs
+
 
 @st.cache_resource
 def build_rag_index(_df_en, _df_ml, _saas, _model, _fc):
@@ -330,12 +353,14 @@ def build_rag_index(_df_en, _df_ml, _saas, _model, _fc):
     tfidf_matrix = vectorizer.fit_transform(docs)
     return {'docs':docs,'metas':metas,'vectorizer':vectorizer,'matrix':tfidf_matrix}
 
+
 def retrieve(query, rag_index, top_k=8):
     from sklearn.metrics.pairwise import cosine_similarity
     q_vec = rag_index['vectorizer'].transform([query])
     scores= cosine_similarity(q_vec, rag_index['matrix']).flatten()
     idx   = np.argsort(scores)[::-1][:top_k]
     return [{'doc':rag_index['docs'][i],'meta':rag_index['metas'][i],'score':float(scores[i])} for i in idx]
+
 
 def rag_answer(query, rag_index, saas, api_key):
     from openai import OpenAI
@@ -364,6 +389,7 @@ def rag_answer(query, rag_index, saas, api_key):
         max_tokens=600, temperature=0.3,
     )
     return response.choices[0].message.content, [r['meta']['name'] for r in results[:3]], results[:5]
+
 
 # ── Load everything ────────────────────────────────────────────────────────────
 df_en, df_ml, saas = load_data()
@@ -428,38 +454,23 @@ with st.sidebar:
             st.rerun()
 
 # ── Compute Scores ─────────────────────────────────────────────────────────────
-@st.cache_resource
-def compute_shap_cached(_model, _X):
-    return shap.TreeExplainer(_model).shap_values(_X)
-
-@st.cache_data
-def compute_scores(_df_ml, _df_en, product, _saas, fc_tuple, _model):
-    fc = list(fc_tuple)
-    df_c = _df_ml.copy()
-    df_c['product_fit_score'] = get_fit_score(product, _df_en, df_c, _saas, fc)
-    X_all = df_c[fc]
-    cp    = _model.predict_proba(X_all)[:,1]
-    fs    = df_c['product_fit_score'].values
-    cs    = cp * 0.6 + fs / 100 * 0.4
-    return cp, fs, cs
-
 cp, fs, cs = compute_scores(df_ml, df_en, sel_prod, saas, tuple(fc), model)
 X_all      = df_ml[fc]
 shap_vals  = compute_shap_cached(model, X_all)
 prod_stats = saas[saas['Product']==sel_prod]
 
 df_r = df_en.copy()
-df_r['conversion_prob']   = cp
-df_r['product_fit_score'] = fs
-df_r['combined_score']    = cs
-df_r['active_hiring']     = df_ml['active_hiring'].values
-df_r['recent_funding_event'] = df_ml['recent_funding_event'].values
-df_r['reply_rate_pct']    = df_ml['reply_rate_pct'].values
+df_r['conversion_prob']        = cp
+df_r['product_fit_score']      = fs
+df_r['combined_score']         = cs
+df_r['active_hiring']          = df_ml['active_hiring'].values
+df_r['recent_funding_event']   = df_ml['recent_funding_event'].values
+df_r['reply_rate_pct']         = df_ml['reply_rate_pct'].values
 df_r['email_engagement_score'] = df_ml['email_engagement_score'].values
-df_r['deal_potential_usd']= df_ml['deal_potential_usd'].values
-df_r['intent_score']      = df_ml.get('intent_score', pd.Series(np.zeros(len(df_ml)))).values
-df_r['lead_score']        = df_ml.get('lead_score', pd.Series(np.zeros(len(df_ml)))).values
-df_r['num_funding_rounds']= df_ml['num_funding_rounds'].values
+df_r['deal_potential_usd']     = df_ml['deal_potential_usd'].values
+df_r['intent_score']           = df_ml['intent_score'].values if 'intent_score' in df_ml.columns else 0
+df_r['lead_score']             = df_ml['lead_score'].values   if 'lead_score'   in df_ml.columns else 0
+df_r['num_funding_rounds']     = df_ml['num_funding_rounds'].values
 
 # Apply filters
 filtered_df = df_r.copy()
@@ -473,7 +484,7 @@ if search_query:
     filtered_df = filtered_df[filtered_df['name'].str.contains(search_query, case=False, na=False)]
 
 filtered_df = filtered_df.sort_values('combined_score', ascending=False).reset_index(drop=True)
-top_df = filtered_df.head(top_k)
+top_df      = filtered_df.head(top_k)
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 prod_info = PRODUCT_INFO.get(sel_prod, {'icon':'📦','desc':''})
@@ -594,11 +605,15 @@ with tab_top:
         st.markdown("### 📋 Company Details")
 
         for pos, (_, row) in enumerate(top_df.iterrows()):
+            # SHAP-based why-text with safe index lookup
             try:
-                mi  = df_en[df_en['name']==row['name']].index[0]
-                li  = df_en.index.get_loc(mi)
-                why = why_text(shap_vals[li], fc)
-            except:
+                co_idx = df_en[df_en['name'] == row['name']].index
+                if len(co_idx) > 0:
+                    li  = df_en.index.get_loc(co_idx[0])
+                    why = why_text(shap_vals[li], fc)
+                else:
+                    why = "Strong signals detected"
+            except Exception:
                 why = "Strong signals detected"
 
             prob    = row['conversion_prob']
@@ -622,10 +637,14 @@ with tab_top:
                 email    = row.get('contact_email','')
                 phone    = row.get('phone','')
 
-                website_link  = f'<a href="{website}" target="_blank" style="color:{ACCENT}">🌐 Website</a>' if website and website != 'nan' else ''
+                website_str   = str(website) if website else ''
+                email_str     = str(email) if email else ''
+                phone_str     = str(phone) if phone else ''
+
+                website_link  = f'<a href="{website_str}" target="_blank" style="color:{ACCENT}">🌐 Website</a>' if website_str and website_str != 'nan' else ''
                 linkedin_link = f'<a href="https://linkedin.com/company/{row["name"].lower().replace(" ","-")}" target="_blank" style="color:{ACCENT}">💼 LinkedIn</a>'
-                email_chip    = f'<span class="contact-chip">📧 {email}</span>' if email and email != 'nan' else '<span class="contact-chip">📧 N/A</span>'
-                phone_chip    = f'<span class="contact-chip">📞 {phone}</span>' if phone and phone != 'nan' else '<span class="contact-chip">📞 N/A</span>'
+                email_chip    = f'<span class="contact-chip">📧 {email_str}</span>' if email_str and email_str != 'nan' else '<span class="contact-chip">📧 N/A</span>'
+                phone_chip    = f'<span class="contact-chip">📞 {phone_str}</span>' if phone_str and phone_str != 'nan' else '<span class="contact-chip">📞 N/A</span>'
 
                 st.markdown(f"""
                 <div class="company-card">
@@ -748,7 +767,6 @@ with tab_chat:
                     st.markdown(f'<div class="chat-ai">🤖 {msg["content"]}</div>',
                                 unsafe_allow_html=True)
 
-                    # Show top company graph if results available
                     if msg.get('results'):
                         res = msg['results']
                         fig_chat = go.Figure(go.Bar(
@@ -772,13 +790,12 @@ with tab_chat:
                         )
                         st.plotly_chart(fig_chat, use_container_width=True)
 
-                        # Why they would buy
                         st.markdown("**💡 Why these companies would buy:**")
                         for r in res[:3]:
                             m = r['meta']
                             reasons = []
-                            if m['active_hiring']:  reasons.append("actively hiring — budget available")
-                            if m['recent_funding']: reasons.append("recently funded — investing in growth")
+                            if m['active_hiring']:   reasons.append("actively hiring — budget available")
+                            if m['recent_funding']:  reasons.append("recently funded — investing in growth")
                             if m['reply_rate'] > 20: reasons.append(f"high reply rate ({m['reply_rate']:.0f}%) — responsive")
                             reason_str = ' · '.join(reasons) if reasons else 'strong overall profile'
                             st.markdown(f"**{m['name']}** ({m['industry']}) — {reason_str}")
@@ -789,7 +806,6 @@ with tab_chat:
 
         st.markdown("---")
 
-        # Input
         col_inp, col_btn, col_clr = st.columns([7, 1, 1])
         with col_inp:
             user_input = st.text_input("Ask anything about your accounts:",
@@ -829,7 +845,7 @@ with tab_market:
         st.markdown(f"**Industry breakdown — {sel_prod}**")
         id_df = prod_stats.groupby('Industry')['Sales'].sum().reset_index()
         fig4  = px.pie(id_df, values='Sales', names='Industry', hole=0.4,
-                       color_discrete_sequence=px.colors.sequential.Emerald_r)
+                       color_discrete_sequence=px.colors.sequential.Greens_r)
         fig4.update_layout(margin=dict(l=0,r=0,t=10,b=0),height=300,
                            paper_bgcolor='rgba(0,0,0,0)',plot_bgcolor='rgba(0,0,0,0)',
                            font=dict(color=TEXT))
