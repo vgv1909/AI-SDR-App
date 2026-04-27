@@ -663,9 +663,9 @@ st.markdown(f"""
     <span style="background:rgba(255,255,255,0.15);color:white;padding:4px 12px;
       border-radius:20px;font-size:0.82rem">{prod_info["icon"]} {sel_prod}</span>
     <span style="background:rgba(255,255,255,0.15);color:white;padding:4px 12px;
-      border-radius:20px;font-size:0.82rem">🏢 1,000 Companies</span>
+      border-radius:20px;font-size:0.82rem">🏢 {len(df_en):,} Companies</span>
     <span style="background:rgba(255,255,255,0.15);color:white;padding:4px 12px;
-      border-radius:20px;font-size:0.82rem">📦 14 Products</span>
+      border-radius:20px;font-size:0.82rem">📦 {len(products)} Products</span>
     <span style="background:rgba(255,255,255,0.15);color:white;padding:4px 12px;
       border-radius:20px;font-size:0.82rem">🤖 XGBoost · ROC-AUC {auc}</span>
     <span style="background:rgba(255,255,255,0.15);color:white;padding:4px 12px;
@@ -675,27 +675,30 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # Key metrics
-prod_revenue = saas[saas["Product"] == sel_prod]["Sales"].sum()
-prod_txns    = saas[saas["Product"] == sel_prod]["Sales"].count()
+prod_revenue  = saas[saas["Product"] == sel_prod]["Sales"].sum()
+prod_txns     = saas[saas["Product"] == sel_prod]["Sales"].count()
+prod_avg_deal = saas[saas["Product"] == sel_prod]["Sales"].mean()
 
 # Compute real Precision@10 — how many of top 10 are genuinely converted
 df_ml_conv              = df_ml.copy()
 df_ml_conv["converted"] = build_converted(df_ml_conv)
-_, prod_label_series    = build_product_label(sel_prod, df_en, saas)
 
-# Get top 10 company names from ranked, find their original positions in df_en
+# Precision@10 — of top 10 ranked companies, how many are genuinely high-signal (converted)?
+# Uses buying-signal conversion label only (not product label which has sparse coverage per product)
 top10_names  = ranked.head(10)["name"].tolist()
 name_to_pos  = {name: i for i, name in enumerate(df_en["name"].tolist())}
 top10_pos    = [name_to_pos[n] for n in top10_names if n in name_to_pos]
 top10_conv   = df_ml_conv["converted"].iloc[top10_pos]
-top10_labels = prod_label_series.iloc[top10_pos]
-precision_at_10 = ((top10_conv == 1) & (top10_labels == 1)).sum() / 10
+precision_at_10 = round(top10_conv.sum() / 10, 2)
+conv_rate = build_converted(df_ml).mean()
+p10_display = f"{int(precision_at_10 * 10)} / 10"
+
 c1, c2, c3, c4 = st.columns(4)
 for col, val, lbl in [
-    (c1, f"{len(ranked):,}", "Total Companies Ranked"),
-    (c2, f"${prod_revenue:,.0f}", f"{sel_prod} · {prod_txns} deals in dataset"),
-    (c3, str(auc), "ROC-AUC Score"),
-    (c4, f"{precision_at_10:.2f}", f"Precision@10 of {len(ranked):,}"),
+    (c1, f"{conv_rate*100:.1f}%",   "Conversion Rate"),
+    (c2, f"{p10_display} ✅",        "Top 10 are Buyers"),
+    (c3, str(auc),                   "ROC-AUC Score"),
+    (c4, f"${prod_avg_deal:,.0f}",   f"{sel_prod} · Avg Deal"),
 ]:
     col.markdown(f'<div class="metric-card"><div class="metric-value">{val}</div>'
                  f'<div class="metric-label">{lbl}</div></div>', unsafe_allow_html=True)
@@ -929,7 +932,7 @@ with tab2:
         st.plotly_chart(fig_ic, use_container_width=True)
 
     with cd:
-        st.markdown("**Buying Signal Distribution — 1,000 Companies**")
+        st.markdown(f"**Buying Signal Distribution — {len(df_en):,} Companies**")
         sig_data = {
             "Signal": ["Actively Hiring","Recently Funded","High Web Traffic","High IT Spend","In the News"],
             "Count": [
@@ -1228,7 +1231,7 @@ with tab4:
         )
 
     # ── Heatmap ───────────────────────────────────────────────────────────────
-    st.markdown("#### 🟩 Rank Heatmap — Top 20 Companies × 14 Products")
+    st.markdown(f"#### 🟩 Rank Heatmap — Top 20 Companies × {len(products)} Products")
     st.caption("Dark green = ranked high. Light = ranked low. "
                "Rows that aren't uniformly dark = product-specific differentiation working.")
 
