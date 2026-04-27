@@ -904,82 +904,100 @@ with tab1:
 # TAB 2 — MARKET INTELLIGENCE
 # ══════════════════════════════════════════════════════════════════════════════
 with tab2:
-    st.markdown('<div class="section-title">📊 Market Intelligence</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">📊 Market Intelligence</div>',
+                unsafe_allow_html=True)
 
+    # ── Section 1: Who buys this product? ─────────────────────────────────────
     ca, cb = st.columns(2)
     with ca:
-        st.markdown(f"**Industry Breakdown — {sel_prod}**")
+        st.markdown(f"**Who buys {sel_prod}? — Industry Breakdown**")
+        st.caption("Revenue share by industry from SaaS transaction data")
         id_df = saas[saas["Product"] == sel_prod].groupby("Industry")["Sales"].sum().reset_index()
-        fig_pie = px.pie(id_df, values="Sales", names="Industry", hole=0.42,
-                         color_discrete_sequence=px.colors.sequential.Greens_r)
-        fig_pie.update_layout(height=300, margin=dict(l=0,r=0,t=10,b=0),
-                              paper_bgcolor="rgba(0,0,0,0)", font=dict(color=TEXT))
+        id_df = id_df.sort_values("Sales", ascending=False)
+        fig_pie = px.pie(
+            id_df, values="Sales", names="Industry", hole=0.45,
+            color_discrete_sequence=px.colors.sequential.Greens_r,
+        )
+        fig_pie.update_traces(textposition="inside", textinfo="percent+label")
+        fig_pie.update_layout(
+            height=340, margin=dict(l=0, r=0, t=10, b=0),
+            paper_bgcolor="rgba(0,0,0,0)", font=dict(color=TEXT),
+            showlegend=False,
+        )
         st.plotly_chart(fig_pie, use_container_width=True)
 
+        # Top buying industry callout
+        top_ind = id_df.iloc[0]["Industry"]
+        top_pct = id_df.iloc[0]["Sales"] / id_df["Sales"].sum() * 100
+        st.markdown(f"""
+        <div class="info-box">
+          🎯 <b>{top_ind}</b> is the top buying industry for {sel_prod}
+          — {top_pct:.1f}% of all revenue
+        </div>
+        """, unsafe_allow_html=True)
+
     with cb:
-        st.markdown("**Revenue Across All Products**")
-        rv = saas.groupby("Product")["Sales"].sum().sort_values(ascending=False).reset_index()
-        fig_rev = go.Figure(go.Bar(
-            x=rv["Product"], y=rv["Sales"],
-            marker_color=[PRIMARY if p == sel_prod else "#6EE7B7" for p in rv["Product"]],
-            text=[f"${v:,.0f}" for v in rv["Sales"]], textposition="outside",
-        ))
-        fig_rev.update_layout(height=300, xaxis_tickangle=-35, yaxis_title="Revenue ($)",
-                              margin=dict(l=0,r=0,t=10,b=80),
-                              plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                              font=dict(color=TEXT))
-        st.plotly_chart(fig_rev, use_container_width=True)
+        st.markdown(f"**Which industries convert best for {sel_prod}?**")
+        st.caption("Conversion rate by industry — companies with strong buying signals")
 
-    st.markdown("---")
-    cc, cd = st.columns(2)
-    with cc:
-        st.markdown("**Conversion Rate by Industry (Top 12)**")
-        top_inds   = df_en["industry"].value_counts().head(15).index
-        df_en_top  = df_en[df_en["industry"].isin(top_inds)].copy()
-        df_en_top["converted"] = build_converted(df_ml)[df_en_top.index]
-        ind_conv   = (df_en_top.groupby("industry")["converted"]
-                      .mean().sort_values(ascending=False).head(12).reset_index())
-        fig_ic = go.Figure(go.Bar(
-            x=ind_conv["converted"], y=ind_conv["industry"], orientation="h",
-            marker=dict(color=ind_conv["converted"],
-                        colorscale=[[0,"#6EE7B7"],[1,"#064e3b"]]),
-            text=[f"{v:.1%}" for v in ind_conv["converted"]], textposition="outside",
-        ))
-        fig_ic.update_layout(height=340, xaxis_title="Conversion Rate",
-                             margin=dict(l=0,r=60,t=10,b=10),
-                             plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                             font=dict(color=TEXT))
-        st.plotly_chart(fig_ic, use_container_width=True)
+        # Build conversion rate per industry for this product
+        _, fit_series = build_product_label(sel_prod, df_en, saas)
+        df_conv = df_en.copy()
+        df_conv["converted"]    = build_converted(df_ml).values
+        df_conv["product_fit"]  = fit_series.values
 
-    with cd:
-        st.markdown(f"**Buying Signal Distribution — {len(df_en):,} Companies**")
-        sig_data = {
-            "Signal": ["Actively Hiring","Recently Funded","High Web Traffic","High IT Spend","In the News"],
-            "Count": [
-                int(df_ml["active_hiring"].sum()),
-                int(df_ml["recent_funding_event"].sum()),
-                int((df_ml["web_visits_30d"] > df_ml["web_visits_30d"].quantile(0.6)).sum()),
-                int((df_ml["it_spend_usd"]   > df_ml["it_spend_usd"].quantile(0.6)).sum()),
-                int(df_ml["has_news"].sum()),
-            ]
-        }
-        sig_df      = pd.DataFrame(sig_data)
-        sig_df["Pct"] = sig_df["Count"] / len(df_ml) * 100
-        fig_sig = go.Figure(go.Bar(
-            x=sig_df["Count"], y=sig_df["Signal"], orientation="h",
-            marker_color=PRIMARY,
-            text=[f"{v} ({p:.1f}%)" for v, p in zip(sig_df["Count"], sig_df["Pct"])],
+        # Weight conversion by product fit — industries that both convert AND fit this product
+        ind_stats = df_conv.groupby("industry").agg(
+            conv_rate  = ("converted", "mean"),
+            count      = ("converted", "count"),
+            fit        = ("product_fit", "mean"),
+        ).reset_index()
+        ind_stats = ind_stats[ind_stats["count"] >= 5]
+        ind_stats["weighted_score"] = ind_stats["conv_rate"] * (1 + ind_stats["fit"])
+        ind_stats = ind_stats.sort_values("weighted_score", ascending=True).tail(12)
+
+        fig_conv = go.Figure(go.Bar(
+            x=ind_stats["weighted_score"],
+            y=ind_stats["industry"],
+            orientation="h",
+            marker=dict(
+                color=ind_stats["weighted_score"],
+                colorscale=[[0, "#D1FAE5"], [1, "#064e3b"]],
+                showscale=False,
+            ),
+            text=[f"{v:.0%}" for v in ind_stats["conv_rate"]],
             textposition="outside",
+            hovertemplate=(
+                "<b>%{y}</b><br>"
+                "Conversion Rate: %{text}<br>"
+                "Weighted Score: %{x:.3f}<br>"
+                "<extra></extra>"
+            ),
         ))
-        fig_sig.update_layout(height=280, xaxis_title="Companies",
-                              margin=dict(l=0,r=120,t=10,b=10),
-                              plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                              font=dict(color=TEXT))
-        st.plotly_chart(fig_sig, use_container_width=True)
+        fig_conv.update_layout(
+            height=340,
+            xaxis=dict(title="Conversion Score (rate × product fit)",
+                       gridcolor=BORDER, zeroline=False),
+            yaxis=dict(tickfont=dict(size=10)),
+            margin=dict(l=0, r=60, t=10, b=10),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=TEXT),
+        )
+        st.plotly_chart(fig_conv, use_container_width=True)
 
-    # ── TAM / SAM / SOM ────────────────────────────────────────────────────────
+        top_ind   = ind_stats.iloc[-1]["industry"]
+        top_rate  = ind_stats.iloc[-1]["conv_rate"]
+        st.markdown(f"""
+        <div class="info-box">
+          🎯 <b>{top_ind}</b> is the highest-converting industry for {sel_prod}
+          — {top_rate:.0%} conversion rate weighted by product fit
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── Section 2: TAM / SAM / SOM ────────────────────────────────────────────
     st.markdown("---")
-    st.markdown('<div class="section-title">💰 Market Opportunity — TAM / SAM / SOM</div>',
+    st.markdown('<div class="section-title">💰 Market Opportunity</div>',
                 unsafe_allow_html=True)
 
     t1, t2, t3 = st.columns(3)
@@ -991,40 +1009,30 @@ with tab2:
          "SaaS companies with 50–500 seats actively using SDR teams",
          LIGHT),
         (t3, "SOM", "$32M",
-         "1% SAM penetration in Year 1 — 320 teams @ $100K ACV",
+         "Year 1 target — 320 teams @ $100K ACV",
          DARK),
     ]:
-        tc = "white" if color == DARK else TEXT
+        tc  = "white" if color == DARK else TEXT
+        vtc = PRIMARY if color == DARK else PRIMARY
+        stc = "#6EE7B7" if color == DARK else SUB
         col.markdown(
-            f'<div style="background:{color};border-radius:12px;padding:24px 20px;'
+            f'<div style="background:{color};border-radius:12px;padding:28px 20px;'
             f'text-align:center;border:1px solid {BORDER};">'
-            f'<div style="font-size:1rem;font-weight:700;color:{tc};opacity:0.7">{lbl}</div>'
-            f'<div style="font-size:2.2rem;font-weight:800;color:{"#10B981" if color==DARK else PRIMARY}">{val}</div>'
-            f'<div style="font-size:0.82rem;color:{"#6EE7B7" if color==DARK else SUB};margin-top:8px">{sub}</div>'
+            f'<div style="font-size:0.9rem;font-weight:700;color:{tc};opacity:0.6;'
+            f'letter-spacing:2px">{lbl}</div>'
+            f'<div style="font-size:2.4rem;font-weight:800;color:{vtc};margin:8px 0">{val}</div>'
+            f'<div style="font-size:0.85rem;color:{stc}">{sub}</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
 
     st.markdown(f"""
     <div class="info-box" style="margin-top:16px">
-      <b>Bottom-up methodology:</b> 32,000 SaaS companies with active SDR teams
-      × 10% early-adopter rate × $100K ACV = $320M Year-3 target.
-      We are targeting 1% of SAM in Year 1 — 320 paying teams.
+      <b>Bottom-up sizing:</b> 32,000 SaaS companies with active SDR teams
+      × 10% early-adopter rate × $100K ACV = <b>$320M Year-3 target.</b>
+      Targeting 1% of SAM in Year 1 — 320 paying teams.
     </div>
     """, unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.markdown("**Product Revenue Summary**")
-    prod_table = saas.groupby("Product").agg(
-        Revenue=("Sales","sum"), Transactions=("Sales","count"),
-        Avg_Deal=("Sales","mean"),
-        Top_Industry=("Industry", lambda x: x.value_counts().index[0]),
-    ).reset_index().sort_values("Revenue", ascending=False)
-    prod_table["Revenue"]  = prod_table["Revenue"].map("${:,.0f}".format)
-    prod_table["Avg_Deal"] = prod_table["Avg_Deal"].map("${:,.0f}".format)
-    prod_table.columns = ["Product","Total Revenue","Transactions","Avg Deal","Top Industry"]
-    st.dataframe(prod_table, use_container_width=True, hide_index=True)
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 3 — MODEL INSIGHTS
