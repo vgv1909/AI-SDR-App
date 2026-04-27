@@ -735,7 +735,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "🏆 Top Accounts",
     "📊 Market Intelligence",
     "🔍 Model Insights",
-    "📈 Rank Divergence",
+    "🔄 Product Comparison",
 ])
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1353,7 +1353,7 @@ with tab3:
 # TAB 4 — RANK DIVERGENCE
 # ══════════════════════════════════════════════════════════════════════════════
 with tab4:
-    st.markdown('<div class="section-title">📈 Rank Divergence Across Products</div>',
+    st.markdown('<div class="section-title">🔄 Product Comparison — How Rankings Shift</div>',
                 unsafe_allow_html=True)
 
     st.markdown(
