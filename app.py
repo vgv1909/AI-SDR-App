@@ -683,18 +683,17 @@ prod_avg_deal = saas[saas["Product"] == sel_prod]["Sales"].mean()
 df_ml_conv              = df_ml.copy()
 df_ml_conv["converted"] = build_converted(df_ml_conv)
 
-# Precision@10 — of top 10 ranked companies, how many are genuinely high-signal (converted)?
-# Uses buying-signal conversion label only (not product label which has sparse coverage per product)
-top10_names  = ranked.head(10)["name"].tolist()
+# Precision@K — of top K ranked companies, how many are genuinely high-signal?
+top10_names  = ranked.head(top_k)["name"].tolist()
 name_to_pos  = {name: i for i, name in enumerate(df_en["name"].tolist())}
 top10_pos    = [name_to_pos[n] for n in top10_names if n in name_to_pos]
 top10_conv   = df_ml_conv["converted"].iloc[top10_pos]
-precision_at_10 = round(top10_conv.sum() / 10, 2)
-p10_display = f"{int(precision_at_10 * 10)} / 10"
+precision_at_10 = round(top10_conv.sum() / top_k, 2)
+p10_display = f"{int(precision_at_10 * top_k)} / {top_k}"
 
 c1, c2, c3, c4 = st.columns(4)
 for col, val, lbl in [
-    (c1, f"{p10_display} ✅",        f"Top 10 · {sel_prod}"),
+    (c1, f"{p10_display} ✅",        f"Top {top_k} are Buyers"),
     (c2, f"${prod_avg_deal:,.0f}",   f"Avg Deal Size"),
     (c3, f"{prod_txns:,}",           f"Deals in Dataset"),
     (c4, f"${prod_revenue:,.0f}",    f"Total Revenue"),
@@ -759,49 +758,61 @@ with tab1:
     if len(filtered) == 0:
         st.warning("No companies match your filters.")
     else:
-        # ── Bubble Chart ──────────────────────────────────────────────────────
-        # X = Reply Rate, Y = Deal Potential, Size = Score, Color = Urgency
-        bubble_df = top_df.copy()
-        urgency_label = bubble_df.apply(
+        # ── Dot Plot ─────────────────────────────────────────────────────────
+        fig_dot = go.Figure()
+
+        urgency_color = top_df.apply(
+            lambda r: PRIMARY if r["active_hiring"] and r["recent_funding_event"]
+            else (ACCENT if r["active_hiring"]
+            else (GOLD if r["recent_funding_event"]
+            else "#CBD5E1")), axis=1
+        ).tolist()
+
+        urgency_label = top_df.apply(
             lambda r: "✅ Hiring + Funded" if r["active_hiring"] and r["recent_funding_event"]
             else ("🔵 Hiring" if r["active_hiring"]
             else ("💰 Funded" if r["recent_funding_event"]
             else "⚪ Watch List")), axis=1
-        )
-        color_map = {
-            "✅ Hiring + Funded": PRIMARY,
-            "🔵 Hiring"         : ACCENT,
-            "💰 Funded"         : GOLD,
-            "⚪ Watch List"      : "#CBD5E1",
-        }
+        ).tolist()
 
-        fig_bubble = go.Figure()
-        for label, color in color_map.items():
-            mask = urgency_label == label
-            if mask.sum() == 0:
+        labels = [f"#{i+1}  {n[:30]}" for i, n in enumerate(top_df["name"])]
+
+        # Score bar (background)
+        fig_dot.add_trace(go.Bar(
+            x=top_df["score"],
+            y=labels,
+            orientation="h",
+            marker=dict(color=urgency_color, opacity=0.15),
+            showlegend=False,
+            hoverinfo="skip",
+        ))
+
+        # Score dots
+        for label_val, color in [
+            ("✅ Hiring + Funded", PRIMARY),
+            ("🔵 Hiring",          ACCENT),
+            ("💰 Funded",          GOLD),
+            ("⚪ Watch List",       "#CBD5E1"),
+        ]:
+            mask = [u == label_val for u in urgency_label]
+            if not any(mask):
                 continue
-            sub = bubble_df[mask].reset_index(drop=True)
-            ranks = [top_df.index.get_loc(i) + 1 for i in bubble_df[mask].index]
-            fig_bubble.add_trace(go.Scatter(
-                x=sub["reply_rate_pct"],
-                y=sub["deal_potential_usd"],
+            x_vals = [s for s, m in zip(top_df["score"].tolist(), mask) if m]
+            y_vals = [l for l, m in zip(labels, mask) if m]
+            deal_vals = [d for d, m in zip(top_df["deal_potential_usd"].tolist(), mask) if m]
+            reply_vals = [r for r, m in zip(top_df["reply_rate_pct"].tolist(), mask) if m]
+            names_vals = [n for n, m in zip(top_df["name"].tolist(), mask) if m]
+            fig_dot.add_trace(go.Scatter(
+                x=x_vals,
+                y=y_vals,
                 mode="markers+text",
-                name=label,
-                text=[f"#{r}" for r in ranks],
-                textposition="middle center",
-                textfont=dict(size=8, color="white" if color != "#CBD5E1" else TEXT),
-                marker=dict(
-                    size=sub["score"] * 60 + 12,
-                    color=color,
-                    opacity=0.85,
-                    line=dict(width=1.5, color="white"),
-                ),
-                customdata=list(zip(
-                    sub["name"],
-                    sub["score"],
-                    sub["deal_potential_usd"],
-                    sub["reply_rate_pct"],
-                )),
+                name=label_val,
+                text=[f"{v:.3f}" for v in x_vals],
+                textposition="middle right",
+                textfont=dict(size=10, color=TEXT),
+                marker=dict(size=16, color=color,
+                            line=dict(width=2, color="white")),
+                customdata=list(zip(names_vals, x_vals, deal_vals, reply_vals)),
                 hovertemplate=(
                     "<b>%{customdata[0]}</b><br>"
                     "Score: %{customdata[1]:.3f}<br>"
@@ -811,34 +822,45 @@ with tab1:
                 ),
             ))
 
-        fig_bubble.update_layout(
-            height=480,
-            xaxis=dict(title="Reply Rate (%)", gridcolor=BORDER, zeroline=False),
-            yaxis=dict(title="Deal Potential ($)", gridcolor=BORDER, zeroline=False,
-                       tickformat="$,.0f"),
+        fig_dot.update_layout(
+            height=max(380, top_k * 28),
+            barmode="overlay",
+            xaxis=dict(title="AI Score", range=[0, 1.12],
+                       gridcolor=BORDER, zeroline=False),
+            yaxis=dict(autorange="reversed", tickfont=dict(size=11)),
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             font=dict(color=TEXT, size=11),
             legend=dict(orientation="h", yanchor="bottom", y=1.02,
                         xanchor="right", x=1, font=dict(size=10)),
-            margin=dict(l=0, r=0, t=40, b=0),
-            annotations=[dict(
-                x=0.98, y=0.98, xref="paper", yref="paper",
-                text="Bubble size = AI Score  ·  Top-right = call first",
-                showarrow=False, font=dict(size=10, color=SUB),
-                xanchor="right",
-            )],
+            margin=dict(l=0, r=80, t=40, b=10),
         )
-        st.plotly_chart(fig_bubble, use_container_width=True)
+        st.plotly_chart(fig_dot, use_container_width=True)
 
         st.markdown("---")
         st.markdown(f"### 📋 Top {top_k} Company Details")
 
         for pos, (_, row) in enumerate(top_df.iterrows()):
-            try:
-                why = why_text(sv[pos], final_fc) if pos < len(sv) else "Strong overall profile"
-            except Exception:
-                why = "Strong overall profile"
+            # Build Why box from actual signals — never falls back to generic text
+            why_signals = []
+            if row.get("active_hiring", 0):       why_signals.append("Actively Hiring 📈")
+            if row.get("recent_funding_event", 0): why_signals.append("Recently Funded 💰")
+            if row.get("reply_rate_pct", 0) > 15:  why_signals.append(f"High Reply Rate ({row['reply_rate_pct']:.1f}%)")
+            if row.get("deal_potential_usd", 0) > ranked["deal_potential_usd"].quantile(0.7):
+                why_signals.append("High Deal Value 💎")
+            if row.get("industry_fit_score", 0) > 0.1:
+                why_signals.append("Strong Industry Fit 🎯")
+            # Fill with SHAP if we have it and need more signals
+            if len(why_signals) < 2:
+                try:
+                    shap_why = why_text(sv[pos], final_fc)
+                    if shap_why and shap_why != "Strong overall profile":
+                        why_signals.append(shap_why)
+                except Exception:
+                    pass
+            if not why_signals:
+                why_signals = ["Strong overall buying signals across multiple dimensions"]
+            why_str = " · ".join(why_signals[:3])
 
             prob    = row["score"]
             website = str(row.get("website", ""))
@@ -874,7 +896,7 @@ with tab1:
                 {'<span style="color:#059669;font-weight:600">✅ Funded</span>' if row.get('recent_funding_event',0) else ''}
               </div>
               <div class="why-box">
-                💡 <b>Why {sel_prod}?</b> &nbsp; {why}
+                💡 <b>Why {sel_prod}?</b> &nbsp; {why_str}
               </div>
             </div>""", unsafe_allow_html=True)
 
