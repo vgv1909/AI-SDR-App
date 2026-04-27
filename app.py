@@ -546,7 +546,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("**🔍 Filters:**")
-    top_k        = st.slider("Top N Companies:", 10, 100, 20)
+    top_k        = st.slider("Companies to show:", 10, 100, 20)
     all_countries  = ["All"] + sorted(df_en["country_code"].dropna().unique().tolist())
     all_industries = ["All"] + sorted(df_en["industry"].dropna().unique().tolist())
     all_sizes      = ["All"] + sorted(df_en["employee_range"].dropna().unique().tolist())
@@ -742,7 +742,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # TAB 1 — TOP ACCOUNTS
 # ══════════════════════════════════════════════════════════════════════════════
 with tab1:
-    st.markdown(f'<div class="section-title">🏆 Top {top_k} Accounts for {sel_prod}</div>',
+    st.markdown(f'<div class="section-title">🏆 Top Accounts for {sel_prod}</div>',
                 unsafe_allow_html=True)
 
     if len(filtered) == 0:
@@ -828,7 +828,7 @@ with tab1:
         st.plotly_chart(fig_dot, use_container_width=True)
 
         st.markdown("---")
-        st.markdown(f"### 📋 Top {top_k} Company Details")
+        st.markdown(f"### 📋 Company Details — {sel_prod}")
 
         for pos, (_, row) in enumerate(top_df.iterrows()):
             # Build Why box from actual signals — bulletproof version
@@ -865,7 +865,10 @@ with tab1:
                 f'font-size:0.85rem;text-decoration:none">🌐 Website</a>'
                 if website and website != "nan" else ""
             )
-            deal = row.get("deal_potential_usd", 0)
+            deal  = float(row.get("deal_potential_usd", 0))
+            days  = int(row.get("days_since_contact", 0))
+            days_color = "#EF4444" if days < 7 else ("#F59E0B" if days < 30 else "#6B7280")
+            days_label = "🔥 Hot" if days < 7 else ("🟡 Warm" if days < 30 else "🔵 Cold")
 
             st.markdown(f"""
             <div class="company-card">
@@ -888,8 +891,9 @@ with tab1:
               <div style="margin-top:10px;font-size:0.88rem;display:flex;gap:16px;flex-wrap:wrap">
                 <span>💬 Reply Rate: <b>{row['reply_rate_pct']:.1f}%</b></span>
                 <span>💰 Deal Potential: <b>${deal:,.0f}</b></span>
-                {'<span style="color:#059669;font-weight:600">✅ Hiring</span>' if row.get('active_hiring',0) else ''}
-                {'<span style="color:#059669;font-weight:600">✅ Funded</span>' if row.get('recent_funding_event',0) else ''}
+                <span style="color:{days_color}">🕐 Last Contact: <b>{days}d ago</b> {days_label}</span>
+                {'<span style="color:#059669;font-weight:600">✅ Hiring</span>' if hiring else ''}
+                {'<span style="color:#059669;font-weight:600">✅ Funded</span>' if funded else ''}
               </div>
               <div class="why-box">
                 💡 <b>Why {sel_prod}?</b> &nbsp; {why_str}
@@ -1247,7 +1251,7 @@ with tab4:
         )
 
     # ── Heatmap ───────────────────────────────────────────────────────────────
-    st.markdown(f"#### 🟩 Rank Heatmap — Top 20 Companies × {len(products)} Products")
+    st.markdown(f"#### 🟩 Rank Heatmap — How Companies Rank Across All {len(products)} Products")
     st.caption("Dark green = ranked high. Light = ranked low. "
                "Rows that aren't uniformly dark = product-specific differentiation working.")
 
