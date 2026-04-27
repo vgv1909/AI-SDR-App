@@ -647,6 +647,13 @@ X_sample["industry_fit_score"] = rank_for_product(
 X_sample = add_interactions(X_sample)
 shap_vals = compute_shap_values(model, X_sample[final_fc].iloc[:200])
 
+# Normalize SHAP output — newer SHAP versions return a list [class_0, class_1]
+# or a 3D array for binary classification. We always want (n_samples, n_features).
+if isinstance(shap_vals, list):
+    shap_vals = shap_vals[1]          # take positive class
+elif hasattr(shap_vals, "ndim") and shap_vals.ndim == 3:
+    shap_vals = shap_vals[:, :, 1]    # take positive class slice
+
 # ── Hero banner ────────────────────────────────────────────────────────────────
 prod_info = PRODUCT_INFO.get(sel_prod, {"icon": "📦", "desc": ""})
 st.markdown(f"""
@@ -1007,7 +1014,25 @@ with tab3:
                 f'the model captures genuine product-specific patterns — not just company size.</div>',
                 unsafe_allow_html=True)
 
-    mean_shap = np.abs(shap_vals).mean(axis=0)
+    # Normalize shap_vals to always be shape (n_samples, n_features)
+    sv = shap_vals
+    if isinstance(sv, list):
+        sv = sv[1] if len(sv) == 2 else sv[0]
+    sv = np.array(sv)
+    if sv.ndim == 3:
+        sv = sv[:, :, 1]
+    # Final safety: flatten to (n_features,) for mean
+    if sv.ndim == 2:
+        mean_shap = np.abs(sv).mean(axis=0)
+    else:
+        mean_shap = np.abs(sv)
+
+    n_feat = len(final_fc)
+    mean_shap = np.array(mean_shap).flatten()[:n_feat]
+    # Pad if somehow shorter
+    if len(mean_shap) < n_feat:
+        mean_shap = np.concatenate([mean_shap, np.zeros(n_feat - len(mean_shap))])
+
     fi_df = pd.DataFrame({
         "Feature": [FEATURE_LABELS.get(f, f) for f in final_fc],
         "SHAP"   : mean_shap,
@@ -1035,11 +1060,14 @@ with tab3:
     st.markdown("#### 🏢 Local Explanation — Why THIS Company?")
     sel_co  = st.selectbox("Select a company:", top_df["name"].tolist()[:20])
     co_pos  = top_df[top_df["name"] == sel_co].index[0] if sel_co in top_df["name"].values else 0
-    idx_in_shap = int(co_pos) if co_pos < len(shap_vals) else 0
-    sv      = shap_vals[idx_in_shap]
+    idx_in_shap = int(co_pos) if co_pos < len(sv) else 0
+    # Extract single row from normalized sv array, ensure shape (n_features,)
+    sv_row  = np.array(sv[idx_in_shap]).flatten()[:len(final_fc)]
+    if len(sv_row) < len(final_fc):
+        sv_row = np.concatenate([sv_row, np.zeros(len(final_fc) - len(sv_row))])
     edf     = pd.DataFrame({
         "Feature": [FEATURE_LABELS.get(f, f) for f in final_fc],
-        "SHAP"   : sv,
+        "SHAP"   : sv_row,
         "raw"    : final_fc,
     }).sort_values("SHAP", key=abs, ascending=False).head(12)
 
