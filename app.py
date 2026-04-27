@@ -907,95 +907,176 @@ with tab2:
     st.markdown('<div class="section-title">📊 Market Intelligence</div>',
                 unsafe_allow_html=True)
 
-    # ── Section 1: Who buys this product? ─────────────────────────────────────
-    ca, cb = st.columns(2)
-    with ca:
-        st.markdown(f"**Who buys {sel_prod}? — Industry Breakdown**")
-        st.caption("Revenue share by industry from SaaS transaction data")
-        id_df = saas[saas["Product"] == sel_prod].groupby("Industry")["Sales"].sum().reset_index()
-        id_df = id_df.sort_values("Sales", ascending=False)
-        fig_pie = px.pie(
-            id_df, values="Sales", names="Industry", hole=0.45,
-            color_discrete_sequence=px.colors.sequential.Greens_r,
+    # ── Row 1: 4 Stat Cards ───────────────────────────────────────────────────
+    high_web   = int((df_ml["web_visits_30d"] > df_ml["web_visits_30d"].quantile(0.6)).sum())
+    high_spend = int((df_ml["it_spend_usd"]   > df_ml["it_spend_usd"].quantile(0.6)).sum())
+    conv_count = int(build_converted(df_ml).sum())
+    conv_rate  = build_converted(df_ml).mean()
+
+    s1, s2, s3, s4 = st.columns(4)
+    for col, val, lbl in [
+        (s1, f"{int(df_ml['active_hiring'].sum())}",        "Actively Hiring"),
+        (s2, f"{int(df_ml['recent_funding_event'].sum())}",  "Recently Funded"),
+        (s3, f"${df_ml['deal_potential_usd'].mean():,.0f}",  "Avg Deal Potential"),
+        (s4, f"{conv_rate*100:.1f}%",                        "Conversion Rate"),
+    ]:
+        col.markdown(
+            f'<div class="metric-card">'
+            f'<div class="metric-value">{val}</div>'
+            f'<div class="metric-label">{lbl}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
         )
-        fig_pie.update_traces(textposition="inside", textinfo="percent+label")
-        fig_pie.update_layout(
-            height=340, margin=dict(l=0, r=0, t=10, b=0),
-            paper_bgcolor="rgba(0,0,0,0)", font=dict(color=TEXT),
-            showlegend=False,
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Row 2: Treemap + Country Bar ──────────────────────────────────────────
+    r2a, r2b = st.columns(2)
+
+    with r2a:
+        st.markdown("**🗂️ Industry Landscape — Company Count**")
+        st.caption("Block size = number of companies · Color = avg AI score for selected product")
+
+        ind_counts = df_en["industry"].value_counts().reset_index()
+        ind_counts.columns = ["Industry", "Count"]
+        ind_counts = ind_counts[ind_counts["Industry"] != "Unknown"].head(20)
+
+        # Get avg score per industry for selected product
+        ranked_copy = ranked[["name", "score"]].copy()
+        ranked_copy = ranked_copy.merge(
+            df_en[["name", "industry"]], on="name", how="left"
         )
-        st.plotly_chart(fig_pie, use_container_width=True)
+        avg_score_by_ind = ranked_copy.groupby("industry")["score"].mean().reset_index()
+        avg_score_by_ind.columns = ["Industry", "AvgScore"]
+        ind_counts = ind_counts.merge(avg_score_by_ind, on="Industry", how="left")
+        ind_counts["AvgScore"] = ind_counts["AvgScore"].fillna(0)
 
-        # Top buying industry callout
-        top_ind = id_df.iloc[0]["Industry"]
-        top_pct = id_df.iloc[0]["Sales"] / id_df["Sales"].sum() * 100
-        st.markdown(f"""
-        <div class="info-box">
-          🎯 <b>{top_ind}</b> is the top buying industry for {sel_prod}
-          — {top_pct:.1f}% of all revenue
-        </div>
-        """, unsafe_allow_html=True)
+        fig_tree = go.Figure(go.Treemap(
+            labels=ind_counts["Industry"],
+            parents=[""] * len(ind_counts),
+            values=ind_counts["Count"],
+            customdata=ind_counts[["AvgScore", "Count"]],
+            hovertemplate=(
+                "<b>%{label}</b><br>"
+                "Companies: %{customdata[1]}<br>"
+                "Avg Score: %{customdata[0]:.3f}<br>"
+                "<extra></extra>"
+            ),
+            marker=dict(
+                colors=ind_counts["AvgScore"],
+                colorscale=[[0, "#D1FAE5"], [1, "#064e3b"]],
+                showscale=True,
+                colorbar=dict(title="Avg Score", thickness=12),
+            ),
+            textinfo="label+value",
+            textfont=dict(size=11),
+        ))
+        fig_tree.update_layout(
+            height=340,
+            margin=dict(l=0, r=0, t=10, b=0),
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=TEXT),
+        )
+        st.plotly_chart(fig_tree, use_container_width=True)
 
-    with cb:
-        st.markdown(f"**Which industries convert best for {sel_prod}?**")
-        st.caption("Conversion rate by industry — companies with strong buying signals")
+    with r2b:
+        st.markdown("**🌍 Geographic Distribution — Top 10 Countries**")
+        st.caption("Where are the prospects located?")
 
-        # Build conversion rate per industry for this product
-        _, fit_series = build_product_label(sel_prod, df_en, saas)
-        df_conv = df_en.copy()
-        df_conv["converted"]    = build_converted(df_ml).values
-        df_conv["product_fit"]  = fit_series.values
+        country_df = df_en[df_en["country_code"] != "Unknown"]["country_code"]\
+            .value_counts().head(10).reset_index()
+        country_df.columns = ["Country", "Count"]
 
-        # Weight conversion by product fit — industries that both convert AND fit this product
-        ind_stats = df_conv.groupby("industry").agg(
-            conv_rate  = ("converted", "mean"),
-            count      = ("converted", "count"),
-            fit        = ("product_fit", "mean"),
-        ).reset_index()
-        ind_stats = ind_stats[ind_stats["count"] >= 5]
-        ind_stats["weighted_score"] = ind_stats["conv_rate"] * (1 + ind_stats["fit"])
-        ind_stats = ind_stats.sort_values("weighted_score", ascending=True).tail(12)
-
-        fig_conv = go.Figure(go.Bar(
-            x=ind_stats["weighted_score"],
-            y=ind_stats["industry"],
+        fig_country = go.Figure(go.Bar(
+            x=country_df["Count"],
+            y=country_df["Country"],
             orientation="h",
             marker=dict(
-                color=ind_stats["weighted_score"],
+                color=country_df["Count"],
                 colorscale=[[0, "#D1FAE5"], [1, "#064e3b"]],
                 showscale=False,
             ),
-            text=[f"{v:.0%}" for v in ind_stats["conv_rate"]],
+            text=country_df["Count"],
             textposition="outside",
-            hovertemplate=(
-                "<b>%{y}</b><br>"
-                "Conversion Rate: %{text}<br>"
-                "Weighted Score: %{x:.3f}<br>"
-                "<extra></extra>"
-            ),
+            hovertemplate="<b>%{y}</b><br>Companies: %{x}<extra></extra>",
         ))
-        fig_conv.update_layout(
+        fig_country.update_layout(
             height=340,
-            xaxis=dict(title="Conversion Score (rate × product fit)",
-                       gridcolor=BORDER, zeroline=False),
-            yaxis=dict(tickfont=dict(size=10)),
-            margin=dict(l=0, r=60, t=10, b=10),
+            xaxis=dict(title="Number of Companies", gridcolor=BORDER, zeroline=False),
+            yaxis=dict(autorange="reversed", tickfont=dict(size=11)),
+            margin=dict(l=0, r=40, t=10, b=10),
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             font=dict(color=TEXT),
         )
-        st.plotly_chart(fig_conv, use_container_width=True)
+        st.plotly_chart(fig_country, use_container_width=True)
 
-        top_ind   = ind_stats.iloc[-1]["industry"]
-        top_rate  = ind_stats.iloc[-1]["conv_rate"]
-        st.markdown(f"""
-        <div class="info-box">
-          🎯 <b>{top_ind}</b> is the highest-converting industry for {sel_prod}
-          — {top_rate:.0%} conversion rate weighted by product fit
-        </div>
-        """, unsafe_allow_html=True)
+    # ── Row 3: Signal Distribution ────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("**📡 Buying Signal Distribution — Pipeline Quality**")
+    st.caption("How many of the 1,000 companies show each buying signal right now")
 
-    # ── Section 2: TAM / SAM / SOM ────────────────────────────────────────────
+    signals_data = {
+        "Signal": [
+            "Actively Hiring",
+            "Recently Funded",
+            "High Web Traffic",
+            "High IT Spend",
+            "In the News",
+            "Multi-round Funded",
+            "Large Tech Stack",
+            "High Employee Count",
+        ],
+        "Count": [
+            int(df_ml["active_hiring"].sum()),
+            int(df_ml["recent_funding_event"].sum()),
+            int((df_ml["web_visits_30d"] > df_ml["web_visits_30d"].quantile(0.6)).sum()),
+            int((df_ml["it_spend_usd"]   > df_ml["it_spend_usd"].quantile(0.6)).sum()),
+            int(df_ml["has_news"].sum()),
+            int((df_ml["num_funding_rounds"] >= 2).sum()),
+            int((df_ml["active_tech_count"]  > df_ml["active_tech_count"].quantile(0.6)).sum()),
+            int((df_ml["employee_count_est"] > df_ml["employee_count_est"].quantile(0.6)).sum()),
+        ],
+    }
+    sig_df      = pd.DataFrame(signals_data)
+    sig_df["Pct"] = sig_df["Count"] / len(df_ml) * 100
+    sig_df      = sig_df.sort_values("Count", ascending=True)
+
+    fig_sig = go.Figure(go.Bar(
+        x=sig_df["Count"],
+        y=sig_df["Signal"],
+        orientation="h",
+        marker=dict(
+            color=sig_df["Count"],
+            colorscale=[[0, "#D1FAE5"], [1, "#064e3b"]],
+            showscale=False,
+        ),
+        text=[f"{c:,}  ({p:.1f}%)" for c, p in zip(sig_df["Count"], sig_df["Pct"])],
+        textposition="outside",
+        hovertemplate="<b>%{y}</b><br>Companies: %{x}<extra></extra>",
+    ))
+    fig_sig.update_layout(
+        height=320,
+        xaxis=dict(title="Number of Companies", gridcolor=BORDER,
+                   zeroline=False, range=[0, 500]),
+        yaxis=dict(tickfont=dict(size=11)),
+        margin=dict(l=0, r=120, t=10, b=10),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=TEXT),
+    )
+    st.plotly_chart(fig_sig, use_container_width=True)
+
+    st.markdown(f"""
+    <div class="info-box">
+      <b>What this means:</b> {int(df_ml['active_hiring'].sum())} companies are actively hiring
+      right now — growth signal. {int(df_ml['recent_funding_event'].sum())} just received funding
+      — budget signal. AI-SDR finds the companies showing the most signals simultaneously
+      and ranks them first.
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Row 4: TAM / SAM / SOM ────────────────────────────────────────────────
     st.markdown("---")
     st.markdown('<div class="section-title">💰 Market Opportunity</div>',
                 unsafe_allow_html=True)
