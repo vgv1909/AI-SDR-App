@@ -1011,6 +1011,55 @@ with tab2:
         )
         st.plotly_chart(fig_country, use_container_width=True)
 
+    # ── Row 2b: Top 10 by Deal Potential ─────────────────────────────────────
+    st.markdown("---")
+    st.markdown(f"**💎 Top 10 Companies by Deal Potential — {sel_prod}**")
+    st.caption("Highest revenue opportunity accounts in your ranked pipeline")
+
+    deal_df = ranked.head(50).nlargest(10, "deal_potential_usd").reset_index(drop=True)
+
+    fig_deal = go.Figure()
+    fig_deal.add_trace(go.Bar(
+        x=deal_df["deal_potential_usd"],
+        y=[f"#{ranked[ranked['name']==n].index[0]+1}  {n[:30]}" for n in deal_df["name"]],
+        orientation="h",
+        marker=dict(
+            color=deal_df["deal_potential_usd"],
+            colorscale=[[0, "#D1FAE5"], [1, "#064e3b"]],
+            showscale=False,
+        ),
+        text=[
+            f"${v:,.0f}  {'✅ Hiring' if h else ''}  {'✅ Funded' if f else ''}"
+            for v, h, f in zip(
+                deal_df["deal_potential_usd"],
+                deal_df["active_hiring"],
+                deal_df["recent_funding_event"],
+            )
+        ],
+        textposition="outside",
+        hovertemplate="<b>%{y}</b><br>Deal Potential: $%{x:,.0f}<extra></extra>",
+    ))
+    fig_deal.update_layout(
+        height=340,
+        xaxis=dict(title="Deal Potential ($)", gridcolor=BORDER,
+                   zeroline=False, tickformat="$,.0f"),
+        yaxis=dict(autorange="reversed", tickfont=dict(size=10)),
+        margin=dict(l=0, r=200, t=10, b=10),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=TEXT),
+    )
+    st.plotly_chart(fig_deal, use_container_width=True)
+
+    top_deal_co  = deal_df.iloc[0]["name"]
+    top_deal_val = deal_df.iloc[0]["deal_potential_usd"]
+    st.markdown(f"""
+    <div class="info-box">
+      💎 <b>{top_deal_co}</b> has the highest deal potential in your ranked pipeline
+      — <b>${top_deal_val:,.0f}</b> estimated deal value for {sel_prod}
+    </div>
+    """, unsafe_allow_html=True)
+
     # ── Row 3: Signal Distribution ────────────────────────────────────────────
     st.markdown("---")
     st.markdown("**📡 Buying Signal Distribution — Pipeline Quality**")
