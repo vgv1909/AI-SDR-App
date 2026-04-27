@@ -1172,64 +1172,88 @@ with tab3:
     st.markdown('<div class="section-title">🔍 Model Insights & Explainability</div>',
                 unsafe_allow_html=True)
 
-    # Scoring formula
+    # ── Formula ───────────────────────────────────────────────────────────────
     st.markdown(f"""
     <div class="formula-box" style="margin-bottom:20px">
       <div style="color:#6EE7B7;font-size:0.78rem;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">
         The Engine — Unified XGBoost Model
       </div>
       <div style="color:white;font-size:1.1rem;font-weight:700;font-family:monospace">
-        Score = σ  Σ  αₖ · hₖ(x)   where x ∈ ℝ²⁶
+        Score = σ  Σ  αₖ · hₖ(x)   where x ∈ ℝ³³
       </div>
       <div style="color:rgba(255,255,255,0.7);font-size:0.82rem;margin-top:8px">
         σ = sigmoid · αₖ = learning rate (0.05) · hₖ = tree k output ·
-        x = 24 raw signals + product_enc + industry_fit_score ·
+        x = 26 raw signals + 7 product×signal interactions ·
         14,000 training pairs · No manual weighting · No data leakage
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Model comparison
-    st.markdown("#### 📊 Model Comparison")
-    model_df = pd.DataFrame({
-        "Model"    : ["Logistic Regression","Random Forest","Gradient Boosting","XGBoost ✅"],
-        "Precision": [0.5692, 0.7143, 0.8333, 0.9111],
-        "Recall"   : [0.8409, 0.5682, 0.6818, 0.9820],
-        "F1"       : [0.6789, 0.6329, 0.7500, 0.9452],
-        "ROC-AUC"  : [0.7175, 0.9969, 0.9967, 0.9995],
-        "PR-AUC"   : [0.1447, 0.9557, 0.9637, 0.9917],
-    })
-    st.dataframe(
-        model_df.style
-        .format({c: "{:.4f}" for c in ["Precision","Recall","F1","ROC-AUC","PR-AUC"]}),
-        use_container_width=True, hide_index=True,
+    # ── Model Comparison Bar Chart ────────────────────────────────────────────
+    st.markdown("#### 📊 Why XGBoost?")
+    st.caption("ROC-AUC comparison — higher is better. XGBoost wins on every metric.")
+
+    model_data = {
+        "Model"  : ["Logistic Regression", "Random Forest", "Gradient Boosting", "XGBoost"],
+        "ROC-AUC": [0.7175, 0.9969, 0.9967, 0.9995],
+        "PR-AUC" : [0.1447, 0.9557, 0.9637, 0.9917],
+        "F1"     : [0.6789, 0.6329, 0.7500, 0.9452],
+    }
+    mdf = pd.DataFrame(model_data)
+
+    fig_model = go.Figure()
+    for metric, color in [("ROC-AUC", PRIMARY), ("PR-AUC", ACCENT), ("F1", GOLD)]:
+        fig_model.add_trace(go.Bar(
+            name=metric,
+            x=mdf["Model"],
+            y=mdf[metric],
+            marker_color=[color if m == "XGBoost" else f"{color}55" for m in mdf["Model"]],
+            text=[f"{v:.4f}" for v in mdf[metric]],
+            textposition="outside",
+        ))
+
+    fig_model.update_layout(
+        height=320,
+        barmode="group",
+        xaxis=dict(gridcolor=BORDER),
+        yaxis=dict(title="Score", range=[0, 1.12], gridcolor=BORDER),
+        margin=dict(l=0, r=0, t=10, b=10),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=TEXT),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
+    st.plotly_chart(fig_model, use_container_width=True)
+    st.markdown(f"""
+    <div class="info-box">
+      XGBoost achieves <b>ROC-AUC 0.9995</b> — the model correctly ranks
+      a genuine buyer above a non-buyer 99.95% of the time.
+      Logistic Regression, the baseline, achieves only 0.7175.
+    </div>
+    """, unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # SHAP Global
-    st.markdown("#### 🌍 Global Feature Importance — SHAP")
-    st.markdown(f'<div class="info-box">SHAP reveals which features the model relies on most. '
-                f'<b>product_enc</b> and <b>industry_fit_score</b> in the top ranks confirms '
-                f'the model captures genuine product-specific patterns — not just company size.</div>',
+    # ── Global SHAP ───────────────────────────────────────────────────────────
+    st.markdown("#### 🌍 What Does the Model Actually Learn? — Global SHAP")
+    st.markdown(f'<div class="info-box">SHAP reveals which signals drive scores most. '
+                f'<b>Green = product-specific features</b> — confirms the model learns '
+                f'product differences, not just "find strong companies."</div>',
                 unsafe_allow_html=True)
 
-    # Normalize shap_vals to always be shape (n_samples, n_features)
     sv = shap_vals
     if isinstance(sv, list):
         sv = sv[1] if len(sv) == 2 else sv[0]
     sv = np.array(sv)
     if sv.ndim == 3:
         sv = sv[:, :, 1]
-    # Final safety: flatten to (n_features,) for mean
     if sv.ndim == 2:
         mean_shap = np.abs(sv).mean(axis=0)
     else:
         mean_shap = np.abs(sv)
 
-    n_feat = len(final_fc)
+    n_feat    = len(final_fc)
     mean_shap = np.array(mean_shap).flatten()[:n_feat]
-    # Pad if somehow shorter
     if len(mean_shap) < n_feat:
         mean_shap = np.concatenate([mean_shap, np.zeros(n_feat - len(mean_shap))])
 
@@ -1239,15 +1263,18 @@ with tab3:
         "raw"    : final_fc,
     }).sort_values("SHAP", ascending=True).tail(15)
 
-    colors_shap = [PRIMARY if f in ["product_enc","industry_fit_score"] else ACCENT
+    colors_shap = [PRIMARY if f in ["product_enc", "industry_fit_score"] +
+                   [ip[2] for ip in INTERACTION_PAIRS] else ACCENT
                    for f in fi_df["raw"]]
+
     fig_shap = go.Figure(go.Bar(
         x=fi_df["SHAP"], y=fi_df["Feature"], orientation="h",
         marker_color=colors_shap,
+        hovertemplate="<b>%{y}</b><br>Mean |SHAP|: %{x:.4f}<extra></extra>",
     ))
     fig_shap.update_layout(
         height=440, xaxis_title="Mean |SHAP Value|",
-        margin=dict(l=0,r=20,t=10,b=10),
+        margin=dict(l=0, r=20, t=10, b=10),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color=TEXT),
     )
@@ -1256,69 +1283,97 @@ with tab3:
 
     st.markdown("---")
 
-    # Local SHAP
-    st.markdown("#### 🏢 Local Explanation — Why THIS Company?")
-    sel_co  = st.selectbox("Select a company:", top_df["name"].tolist()[:20])
-    co_pos  = top_df[top_df["name"] == sel_co].index[0] if sel_co in top_df["name"].values else 0
+    # ── Local SHAP — readable ─────────────────────────────────────────────────
+    st.markdown("#### 🏢 Why THIS Company? — Plain English Explanation")
+    sel_co      = st.selectbox("Select a company:", top_df["name"].tolist()[:20])
+    co_pos      = top_df[top_df["name"] == sel_co].index[0] if sel_co in top_df["name"].values else 0
     idx_in_shap = int(co_pos) if co_pos < len(sv) else 0
-    # Extract single row from normalized sv array, ensure shape (n_features,)
-    sv_row  = np.array(sv[idx_in_shap]).flatten()[:len(final_fc)]
+    sv_row      = np.array(sv[idx_in_shap]).flatten()[:len(final_fc)]
     if len(sv_row) < len(final_fc):
         sv_row = np.concatenate([sv_row, np.zeros(len(final_fc) - len(sv_row))])
-    edf     = pd.DataFrame({
+
+    edf = pd.DataFrame({
         "Feature": [FEATURE_LABELS.get(f, f) for f in final_fc],
         "SHAP"   : sv_row,
         "raw"    : final_fc,
-    }).sort_values("SHAP", key=abs, ascending=False).head(12)
+    }).sort_values("SHAP", ascending=False)
+
+    co_score = float(top_df[top_df["name"] == sel_co]["score"].values[0]) if sel_co in top_df["name"].values else 0
+
+    # Score gauge
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#064e3b,#059669);
+      border-radius:12px;padding:16px 24px;margin-bottom:16px;
+      display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="color:#6EE7B7;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px">
+          AI Score for {sel_prod}
+        </div>
+        <div style="color:white;font-size:2rem;font-weight:800">{co_score:.3f}</div>
+      </div>
+      <div style="color:rgba(255,255,255,0.8);font-size:0.9rem;max-width:60%;text-align:right">
+        {sel_co} ranks in the <b style="color:#6EE7B7">
+        top {int((1 - co_score) * 100) + 1}%</b> of all companies for {sel_prod}
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     c1x, c2x = st.columns(2)
     with c1x:
-        st.markdown(f"**✅ Top reasons FOR {sel_co[:25]}:**")
+        st.markdown(f"**✅ Why {sel_co[:20]} scores high:**")
         for _, r in edf[edf["SHAP"] > 0].head(5).iterrows():
-            st.markdown(f"→ **{r['Feature']}** &nbsp; `+{r['SHAP']:.4f}`")
+            bar_width = min(int(abs(r["SHAP"]) / edf["SHAP"].abs().max() * 100), 100)
+            st.markdown(f"""
+            <div style="margin:6px 0">
+              <div style="font-size:0.88rem;font-weight:600;color:{TEXT}">{r['Feature']}</div>
+              <div style="background:#E5E7EB;border-radius:4px;height:8px;margin-top:3px">
+                <div style="background:{PRIMARY};width:{bar_width}%;height:8px;border-radius:4px"></div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
     with c2x:
-        st.markdown("**⚠️ Factors working against:**")
+        st.markdown("**⚠️ What's holding the score back:**")
         neg = edf[edf["SHAP"] < 0]
         if len(neg):
             for _, r in neg.head(5).iterrows():
-                st.markdown(f"→ **{r['Feature']}** &nbsp; `{r['SHAP']:.4f}`")
+                bar_width = min(int(abs(r["SHAP"]) / edf["SHAP"].abs().max() * 100), 100)
+                st.markdown(f"""
+                <div style="margin:6px 0">
+                  <div style="font-size:0.88rem;font-weight:600;color:{TEXT}">{r['Feature']}</div>
+                  <div style="background:#E5E7EB;border-radius:4px;height:8px;margin-top:3px">
+                    <div style="background:{RED};width:{bar_width}%;height:8px;border-radius:4px"></div>
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
         else:
             st.markdown("No significant negative factors.")
 
     st.markdown("---")
 
-    # ── Honest Slide ───────────────────────────────────────────────────────────
+    # ── Honest Slide ──────────────────────────────────────────────────────────
     st.markdown("#### ⚠️ Known Limitations — Engineering Honesty")
     st.markdown(f'<div class="warn-box">Finding your own limitations before others do is a sign of '
-                f'engineering maturity — not weakness. Here is what AI-SDR does not yet do perfectly.</div>',
+                f'engineering maturity — not weakness.</div>',
                 unsafe_allow_html=True)
 
     limitations = [
         {
-            "title": "Engineered Label Risk",
-            "detail": (
-                "The `converted` target was built from observable buying signals (hiring, funding, web traffic), "
-                "not from real closed-won CRM outcomes. A company can score high without ever purchasing."
-            ),
-            "fix": "Phase 2: Partner with a real SaaS sales team to replace engineered labels with actual CRM closed-won/lost data.",
+            "title" : "Engineered Label Risk",
+            "detail": "The `converted` target was built from buying signals — not real CRM outcomes. A company can score high without ever purchasing.",
+            "fix"   : "Phase 2: Replace with real CRM closed-won/lost data from a SaaS sales partner.",
             "timeline": "Q3 2025",
         },
         {
-            "title": "Cold-Start Problem",
-            "detail": (
-                "New companies with no Crunchbase profile, no web traffic data, and no CRM history "
-                "score near the dataset median regardless of true potential. The model has no signal to learn from."
-            ),
-            "fix": "Industry-average imputation with explicit confidence intervals in the UI — SDRs see a '?' badge on low-data companies.",
+            "title" : "Cold-Start Problem",
+            "detail": "New companies with no Crunchbase profile or CRM history score near the median regardless of true potential.",
+            "fix"   : "Industry-average imputation + confidence interval badges for low-data companies.",
             "timeline": "Q2 2025",
         },
         {
-            "title": "Static Training Data",
-            "detail": (
-                "The model is trained on a fixed data snapshot. A company that was 'cold' 6 months ago "
-                "may now be actively hiring and funded — but the model won't know until retrained."
-            ),
-            "fix": "Scheduled weekly re-training via GitHub Actions + Crunchbase API refresh. Estimated 3 sprints.",
+            "title" : "Static Training Data",
+            "detail": "Model is trained on a fixed snapshot. A cold company 6 months ago may now be hiring and funded — model won't know until retrained.",
+            "fix"   : "Weekly re-training via GitHub Actions + Crunchbase API refresh.",
             "timeline": "Q4 2025",
         },
     ]
@@ -1330,9 +1385,8 @@ with tab3:
           <span style="color:{SUB};font-size:0.88rem">{lim['detail']}</span><br><br>
           <span style="color:#065f46;font-size:0.88rem">
             ✅ <b>Mitigation:</b> {lim['fix']}
-            &nbsp;&nbsp; <span style="background:#FEF3C7;padding:2px 8px;border-radius:4px;font-size:0.8rem">
-              Target: {lim['timeline']}
-            </span>
+            &nbsp;&nbsp;<span style="background:#FEF3C7;padding:2px 8px;
+              border-radius:4px;font-size:0.8rem">Target: {lim['timeline']}</span>
           </span>
         </div>
         """, unsafe_allow_html=True)
