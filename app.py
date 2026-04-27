@@ -679,24 +679,14 @@ prod_revenue  = saas[saas["Product"] == sel_prod]["Sales"].sum()
 prod_txns     = saas[saas["Product"] == sel_prod]["Sales"].count()
 prod_avg_deal = saas[saas["Product"] == sel_prod]["Sales"].mean()
 
-# Compute real Precision@10 — how many of top 10 are genuinely converted
-df_ml_conv              = df_ml.copy()
-df_ml_conv["converted"] = build_converted(df_ml_conv)
-
-# Precision@K — of top K ranked companies, how many are genuinely high-signal?
-top10_names  = ranked.head(top_k)["name"].tolist()
-name_to_pos  = {name: i for i, name in enumerate(df_en["name"].tolist())}
-top10_pos    = [name_to_pos[n] for n in top10_names if n in name_to_pos]
-top10_conv   = df_ml_conv["converted"].iloc[top10_pos]
-precision_at_10 = round(top10_conv.sum() / top_k, 2)
-p10_display = f"{int(precision_at_10 * top_k)} / {top_k}"
+top10_avg_score = round(ranked.head(10)["score"].mean(), 4)
 
 c1, c2, c3, c4 = st.columns(4)
 for col, val, lbl in [
-    (c1, f"{p10_display} ✅",        f"Top {top_k} are Buyers"),
-    (c2, f"${prod_avg_deal:,.0f}",   f"Avg Deal Size"),
-    (c3, f"{prod_txns:,}",           f"Deals in Dataset"),
-    (c4, f"${prod_revenue:,.0f}",    f"Total Revenue"),
+    (c1, f"{top10_avg_score:.4f}",   "Top 10 Avg Score"),
+    (c2, f"${prod_avg_deal:,.0f}",   "Avg Deal Size"),
+    (c3, f"{prod_txns:,}",           "Deals in Dataset"),
+    (c4, f"${prod_revenue:,.0f}",    "Total Revenue"),
 ]:
     col.markdown(f'<div class="metric-card"><div class="metric-value">{val}</div>'
                  f'<div class="metric-label">{lbl}</div></div>', unsafe_allow_html=True)
