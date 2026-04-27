@@ -1011,52 +1011,53 @@ with tab2:
         )
         st.plotly_chart(fig_country, use_container_width=True)
 
-    # ── Row 2b: Top 10 by Deal Potential ─────────────────────────────────────
+    # ── Row 2b: Score Distribution Histogram ─────────────────────────────────
     st.markdown("---")
-    st.markdown(f"**💎 Top 10 Companies by Deal Potential — {sel_prod}**")
-    st.caption("Highest revenue opportunity accounts in your ranked pipeline")
+    st.markdown(f"**📈 AI Score Distribution — {sel_prod}**")
+    st.caption("How scores are spread across all companies — a discriminative model separates high from low clearly")
 
-    deal_df = ranked.head(50).nlargest(10, "deal_potential_usd").reset_index(drop=True)
-
-    fig_deal = go.Figure()
-    fig_deal.add_trace(go.Bar(
-        x=deal_df["deal_potential_usd"],
-        y=[f"#{ranked[ranked['name']==n].index[0]+1}  {n[:30]}" for n in deal_df["name"]],
-        orientation="h",
+    fig_hist = go.Figure()
+    fig_hist.add_trace(go.Histogram(
+        x=ranked["score"],
+        nbinsx=30,
         marker=dict(
-            color=deal_df["deal_potential_usd"],
-            colorscale=[[0, "#D1FAE5"], [1, "#064e3b"]],
-            showscale=False,
+            color=PRIMARY,
+            opacity=0.85,
+            line=dict(color="white", width=0.5),
         ),
-        text=[
-            f"${v:,.0f}  {'✅ Hiring' if h else ''}  {'✅ Funded' if f else ''}"
-            for v, h, f in zip(
-                deal_df["deal_potential_usd"],
-                deal_df["active_hiring"],
-                deal_df["recent_funding_event"],
-            )
-        ],
-        textposition="outside",
-        hovertemplate="<b>%{y}</b><br>Deal Potential: $%{x:,.0f}<extra></extra>",
+        hovertemplate="Score: %{x:.2f}<br>Companies: %{y}<extra></extra>",
+        name=sel_prod,
     ))
-    fig_deal.update_layout(
-        height=340,
-        xaxis=dict(title="Deal Potential ($)", gridcolor=BORDER,
-                   zeroline=False, tickformat="$,.0f"),
-        yaxis=dict(autorange="reversed", tickfont=dict(size=10)),
-        margin=dict(l=0, r=200, t=10, b=10),
+
+    # Add vertical line for top 20 threshold
+    threshold = float(ranked.head(20)["score"].min())
+    fig_hist.add_vline(
+        x=threshold,
+        line=dict(color=GOLD, width=2, dash="dash"),
+        annotation_text=f"Top 20 cutoff ({threshold:.3f})",
+        annotation_position="top right",
+        annotation_font=dict(color=GOLD, size=10),
+    )
+
+    fig_hist.update_layout(
+        height=300,
+        xaxis=dict(title="AI Score", gridcolor=BORDER, zeroline=False, range=[0, 1]),
+        yaxis=dict(title="Number of Companies", gridcolor=BORDER),
+        margin=dict(l=0, r=0, t=30, b=10),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color=TEXT),
+        showlegend=False,
     )
-    st.plotly_chart(fig_deal, use_container_width=True)
+    st.plotly_chart(fig_hist, use_container_width=True)
 
-    top_deal_co  = deal_df.iloc[0]["name"]
-    top_deal_val = deal_df.iloc[0]["deal_potential_usd"]
+    high_score = int((ranked["score"] >= 0.8).sum())
+    low_score  = int((ranked["score"] <  0.3).sum())
     st.markdown(f"""
     <div class="info-box">
-      💎 <b>{top_deal_co}</b> has the highest deal potential in your ranked pipeline
-      — <b>${top_deal_val:,.0f}</b> estimated deal value for {sel_prod}
+      <b>Model is discriminative:</b> {high_score} companies score above 0.8 —
+      clear buying intent for {sel_prod}. {low_score} score below 0.3 —
+      the model confidently filters them out. SDRs only call the right ones.
     </div>
     """, unsafe_allow_html=True)
 
