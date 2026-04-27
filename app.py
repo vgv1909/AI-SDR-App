@@ -652,7 +652,7 @@ st.markdown(f"""
     🎯 AI-SDR: Intelligent Account Prioritization
   </h1>
   <p style="color:#6EE7B7;margin:8px 0 12px 0;font-size:0.95rem;font-style:italic">
-    "Know who to call. Know why. For any product, any time."
+    "Any company. Any product. Zero wasted calls."
   </p>
   <p style="color:rgba(255,255,255,0.85);margin:0;font-size:0.88rem;max-width:760px">
     AI-SDR scores 1,000 B2B companies across 26 buying-readiness signals using XGBoost,
@@ -759,99 +759,102 @@ with tab1:
     if len(filtered) == 0:
         st.warning("No companies match your filters.")
     else:
-        c1s, c2s, c3s, c4s = st.columns(4)
-        c1s.metric("Actively Hiring",   f"{int(ranked['active_hiring'].sum())}",
-                   f"{ranked['active_hiring'].mean()*100:.1f}% of 1,000")
-        c2s.metric("Recently Funded",   f"{int(ranked['recent_funding_event'].sum())}",
-                   f"{ranked['recent_funding_event'].mean()*100:.1f}% of 1,000")
-        c3s.metric("Avg Reply Rate",    f"{ranked['reply_rate_pct'].mean():.1f}%",
-                   f"Top {top_k}: {top_df['reply_rate_pct'].mean():.1f}%")
-        c4s.metric("Avg Deal Value",    f"${ranked['deal_potential_usd'].mean():,.0f}",
-                   f"Top {top_k}: ${top_df['deal_potential_usd'].mean():,.0f}")
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # Scoring formula
-        st.markdown(f"""
-        <div class="formula-box">
-          <div style="color:#6EE7B7;font-size:0.8rem;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">
-            Scoring Formula
-          </div>
-          <div style="color:white;font-size:1.2rem;font-weight:700;font-family:monospace">
-            Score = P(convert | company, product) = σ Σ αₖ · hₖ(x)
-          </div>
-          <div style="color:rgba(255,255,255,0.7);font-size:0.82rem;margin-top:8px">
-            26 features (24 raw signals + product_enc + industry_fit_score) ·
-            100 trees · learning rate 0.05 · trained on 14,000 company×product pairs
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Bar chart
-        np.random.seed(42)
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=top_df["score"],
-            y=[f"#{i+1} {n[:28]}" for i, n in enumerate(top_df["name"])],
-            orientation="h",
-            marker=dict(color=top_df["score"],
-                        colorscale=[[0, "#6EE7B7"], [1, "#064e3b"]], showscale=False),
-            text=[f"{s:.3f}" for s in top_df["score"]],
-            textposition="outside", name="Score",
-        ))
-        fig.add_trace(go.Scatter(
-            x=top_df["model_prob"],
-            y=[f"#{i+1} {n[:28]}" for i, n in enumerate(top_df["name"])],
-            mode="markers",
-            marker=dict(symbol="diamond", size=9, color=GOLD),
-            name="Model Probability",
-        ))
-        fig.update_layout(
-            height=max(340, top_k * 30),
-            margin=dict(l=0, r=80, t=10, b=10),
-            xaxis=dict(title="Score", range=[0, 1.1]),
-            yaxis=dict(autorange="reversed"),
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            font=dict(color=TEXT, size=11),
+        # ── Bubble Chart ──────────────────────────────────────────────────────
+        # X = Reply Rate, Y = Deal Potential, Size = Score, Color = Urgency
+        bubble_df = top_df.copy()
+        urgency_label = bubble_df.apply(
+            lambda r: "✅ Hiring + Funded" if r["active_hiring"] and r["recent_funding_event"]
+            else ("🔵 Hiring" if r["active_hiring"]
+            else ("💰 Funded" if r["recent_funding_event"]
+            else "⚪ Watch List")), axis=1
         )
-        st.plotly_chart(fig, use_container_width=True)
+        color_map = {
+            "✅ Hiring + Funded": PRIMARY,
+            "🔵 Hiring"         : ACCENT,
+            "💰 Funded"         : GOLD,
+            "⚪ Watch List"      : "#CBD5E1",
+        }
 
-        # Export
-        export_df = top_df[["name","industry","country_code","employee_range",
-                             "score","model_prob","industry_fit_score",
-                             "active_hiring","recent_funding_event"]].copy()
-        export_df.columns = ["Company","Industry","Country","Size","Score",
-                             "Model Prob","Fit Score","Hiring","Funded"]
-        st.download_button("📥 Export to CSV", export_df.to_csv(index=False),
-                           f"aisdr_{sel_prod.replace(' ','_')}_top{top_k}.csv", "text/csv")
+        fig_bubble = go.Figure()
+        for label, color in color_map.items():
+            mask = urgency_label == label
+            if mask.sum() == 0:
+                continue
+            sub = bubble_df[mask].reset_index(drop=True)
+            ranks = [top_df.index.get_loc(i) + 1 for i in bubble_df[mask].index]
+            fig_bubble.add_trace(go.Scatter(
+                x=sub["reply_rate_pct"],
+                y=sub["deal_potential_usd"],
+                mode="markers+text",
+                name=label,
+                text=[f"#{r}" for r in ranks],
+                textposition="middle center",
+                textfont=dict(size=8, color="white" if color != "#CBD5E1" else TEXT),
+                marker=dict(
+                    size=sub["score"] * 60 + 12,
+                    color=color,
+                    opacity=0.85,
+                    line=dict(width=1.5, color="white"),
+                ),
+                customdata=list(zip(
+                    sub["name"],
+                    sub["score"],
+                    sub["deal_potential_usd"],
+                    sub["reply_rate_pct"],
+                )),
+                hovertemplate=(
+                    "<b>%{customdata[0]}</b><br>"
+                    "Score: %{customdata[1]:.3f}<br>"
+                    "Deal Potential: $%{customdata[2]:,.0f}<br>"
+                    "Reply Rate: %{customdata[3]:.1f}%<br>"
+                    "<extra></extra>"
+                ),
+            ))
+
+        fig_bubble.update_layout(
+            height=480,
+            xaxis=dict(title="Reply Rate (%)", gridcolor=BORDER, zeroline=False),
+            yaxis=dict(title="Deal Potential ($)", gridcolor=BORDER, zeroline=False,
+                       tickformat="$,.0f"),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=TEXT, size=11),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                        xanchor="right", x=1, font=dict(size=10)),
+            margin=dict(l=0, r=0, t=40, b=0),
+            annotations=[dict(
+                x=0.98, y=0.98, xref="paper", yref="paper",
+                text="Bubble size = AI Score  ·  Top-right = call first",
+                showarrow=False, font=dict(size=10, color=SUB),
+                xanchor="right",
+            )],
+        )
+        st.plotly_chart(fig_bubble, use_container_width=True)
 
         st.markdown("---")
-        st.markdown("### 📋 Company Details")
+        st.markdown(f"### 📋 Top {top_k} Company Details")
 
         for pos, (_, row) in enumerate(top_df.iterrows()):
             try:
-                why = why_text(shap_vals[pos], final_fc) if pos < len(shap_vals) else "Strong overall profile"
+                why = why_text(sv[pos], final_fc) if pos < len(sv) else "Strong overall profile"
             except Exception:
                 why = "Strong overall profile"
 
             prob    = row["score"]
-            email   = str(row.get("contact_email", ""))
             website = str(row.get("website", ""))
-            website_link = (f'<a href="{website}" target="_blank" style="color:{ACCENT}">🌐 Website</a>'
-                            if website and website != "nan" else "")
-            linkedin_link = (f'<a href="https://linkedin.com/company/{row["name"].lower().replace(" ","-")}" '
-                             f'target="_blank" style="color:{ACCENT}">💼 LinkedIn</a>')
-            email_chip = (f'<span style="background:#F1F5F9;border-radius:20px;padding:3px 10px;'
-                          f'font-size:0.8rem;border:1px solid {BORDER}">📧 {email}</span>'
-                          if email and email != "nan" else "")
+            website_link = (
+                f'<a href="{website}" target="_blank" style="color:{ACCENT};'
+                f'font-size:0.85rem;text-decoration:none">🌐 Website</a>'
+                if website and website != "nan" else ""
+            )
+            deal = row.get("deal_potential_usd", 0)
 
             st.markdown(f"""
             <div class="company-card">
               <div style="display:flex;justify-content:space-between;align-items:flex-start">
                 <div>
                   <b style="font-size:1.05rem">#{pos+1} &nbsp; {row['name']}</b>
-                  &nbsp;&nbsp; {website_link} &nbsp; {linkedin_link}
+                  &nbsp;&nbsp; {website_link}
                   <br>
                   <span style="color:{SUB};font-size:0.85rem">
                     {row.get('industry','—')} &nbsp;·&nbsp;
@@ -864,16 +867,12 @@ with tab1:
                   <br><span style="font-size:0.75rem;color:{SUB}">Score</span>
                 </div>
               </div>
-              <div style="margin-top:10px;font-size:0.88rem">
-                Model Prob: <b>{row['model_prob']:.1%}</b> &nbsp;·&nbsp;
-                Fit Score: <b>{row['industry_fit_score']:.3f}</b> &nbsp;·&nbsp;
-                Funding: <b>${row.get('funding_total_usd',0):,.0f}</b> &nbsp;·&nbsp;
-                Rounds: <b>{int(row.get('num_funding_rounds',0))}</b>
-                &nbsp;&nbsp;
+              <div style="margin-top:10px;font-size:0.88rem;display:flex;gap:16px;flex-wrap:wrap">
+                <span>💬 Reply Rate: <b>{row['reply_rate_pct']:.1f}%</b></span>
+                <span>💰 Deal Potential: <b>${deal:,.0f}</b></span>
                 {'<span style="color:#059669;font-weight:600">✅ Hiring</span>' if row.get('active_hiring',0) else ''}
-                {'&nbsp;<span style="color:#059669;font-weight:600">✅ Funded</span>' if row.get('recent_funding_event',0) else ''}
+                {'<span style="color:#059669;font-weight:600">✅ Funded</span>' if row.get('recent_funding_event',0) else ''}
               </div>
-              {f'<div style="margin-top:6px">{email_chip}</div>' if email_chip else ''}
               <div class="why-box">
                 💡 <b>Why {sel_prod}?</b> &nbsp; {why}
               </div>
