@@ -1000,7 +1000,6 @@ with tab3:
     })
     st.dataframe(
         model_df.style
-        .highlight_max(axis=0, subset=["Precision","Recall","F1","ROC-AUC","PR-AUC"], color="#d4edda")
         .format({c: "{:.4f}" for c in ["Precision","Recall","F1","ROC-AUC","PR-AUC"]}),
         use_container_width=True, hide_index=True,
     )
@@ -1280,7 +1279,6 @@ with tab4:
 
     st.dataframe(
         divergence_df.style
-        .background_gradient(subset=["Rank Range", "Std Dev"], cmap="Greens")
         .format({"Rank Range": "{:.0f}", "Std Dev": "{:.1f}",
                  "Best Rank": "{:.0f}", "Worst Rank": "{:.0f}"}),
         use_container_width=True, hide_index=True,
