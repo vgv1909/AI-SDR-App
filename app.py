@@ -1358,12 +1358,9 @@ with tab4:
 
     st.markdown(
         f'<div class="info-box">'
-        f'<b>Addresses reviewer concern:</b> "The same companies rank high for every product."<br><br>'
-        f'If AI-SDR truly captures <b>product-specific fit</b> — not just "strong companies" — '
-        f'the same company should rank very differently across products. '
-        f'The product × signal interaction features force the model to learn these differences.<br><br>'
-        f'<b>Dark green = high rank (top prospect). Light = low rank. '
-        f'Crossing lines in the bump chart = genuine product differentiation.</b>'
+        f'The same company ranks differently depending on which product you select. '
+        f'<b>Dark green = top prospect. Light = low priority.</b> '
+        f'Crossing lines in the bump chart = the model genuinely differentiates by product.'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -1380,7 +1377,6 @@ with tab4:
             )
             rank_data[prod] = dict(zip(ranked["name"], range(1, len(ranked) + 1)))
 
-        # Pick top-N companies by average rank across all products
         all_names = _df_en["name"].tolist()
         avg_ranks = {
             name: np.mean([rank_data[p].get(name, 1000) for p in all_products])
@@ -1394,7 +1390,7 @@ with tab4:
                 matrix.loc[name, prod] = rank_data[prod].get(name, 1000)
         return matrix.astype(int)
 
-    with st.spinner("Computing ranks across all 14 products — first load only…"):
+    with st.spinner("Computing ranks across all products — first load only…"):
         rank_matrix = build_rank_matrix(
             df_en, df_ml, saas,
             tuple(fc), tuple(final_fc), model, le_prod,
@@ -1402,9 +1398,8 @@ with tab4:
         )
 
     # ── Heatmap ───────────────────────────────────────────────────────────────
-    st.markdown(f"#### 🟩 Rank Heatmap — How Companies Rank Across All {len(products)} Products")
-    st.caption("Dark green = ranked high. Light = ranked low. "
-               "Rows that aren't uniformly dark = product-specific differentiation working.")
+    st.markdown(f"#### 🟩 How Companies Rank Across All {len(products)} Products")
+    st.caption("Dark green = high rank (top prospect) · Light = low rank · Mixed rows = product-specific differentiation")
 
     fig_heat = go.Figure(go.Heatmap(
         z=rank_matrix.values,
@@ -1440,13 +1435,12 @@ with tab4:
     st.plotly_chart(fig_heat, use_container_width=True)
 
     # ── Bump Chart ────────────────────────────────────────────────────────────
-    st.markdown("#### 〰️ Rank Bump Chart — How Companies Move Across Products")
-    st.caption("Crossing lines = a company that is a top prospect for one product "
-               "but weak for another. Flat lines = model is NOT differentiating by product.")
+    st.markdown("#### 〰️ Rank Movement Across Products")
+    st.caption("Each line = one company · Crossing lines = different rank per product · Flat lines = no differentiation")
 
-    top10        = rank_matrix.head(10)
+    top10         = rank_matrix.head(10)
     products_list = rank_matrix.columns.tolist()
-    bump_colors  = [
+    bump_colors   = [
         "#10B981","#3B82F6","#F59E0B","#EF4444","#8B5CF6",
         "#06B6D4","#84CC16","#F97316","#EC4899","#64748B",
     ]
@@ -1476,56 +1470,21 @@ with tab4:
     )
     st.plotly_chart(fig_bump, use_container_width=True)
 
-    # ── Divergence Summary Table ───────────────────────────────────────────────
+    # ── Divergence Summary Table ──────────────────────────────────────────────
     st.markdown("#### 📋 Divergence Summary")
-    st.caption("High Rank Range = model assigns very different ranks across products = product-specific learning is working.")
+    st.caption("High Rank Range = company ranks very differently across products = product-specific model is working")
 
     divergence_df = pd.DataFrame({
-        "Company"       : rank_matrix.index,
-        "Best Rank"     : rank_matrix.min(axis=1).values,
-        "Best Product"  : [rank_matrix.columns[rank_matrix.loc[c].argmin()] for c in rank_matrix.index],
-        "Worst Rank"    : rank_matrix.max(axis=1).values,
-        "Worst Product" : [rank_matrix.columns[rank_matrix.loc[c].argmax()] for c in rank_matrix.index],
-        "Rank Range"    : (rank_matrix.max(axis=1) - rank_matrix.min(axis=1)).values,
-        "Std Dev"       : rank_matrix.std(axis=1).round(1).values,
+        "Company"      : rank_matrix.index,
+        "Best Rank"    : rank_matrix.min(axis=1).values,
+        "Best Product" : [rank_matrix.columns[rank_matrix.loc[c].argmin()] for c in rank_matrix.index],
+        "Worst Rank"   : rank_matrix.max(axis=1).values,
+        "Worst Product": [rank_matrix.columns[rank_matrix.loc[c].argmax()] for c in rank_matrix.index],
+        "Rank Range"   : (rank_matrix.max(axis=1) - rank_matrix.min(axis=1)).values,
     }).sort_values("Rank Range", ascending=False).reset_index(drop=True)
 
     st.dataframe(
         divergence_df.style
-        .format({"Rank Range": "{:.0f}", "Std Dev": "{:.1f}",
-                 "Best Rank": "{:.0f}", "Worst Rank": "{:.0f}"}),
+        .format({"Rank Range": "{:.0f}", "Best Rank": "{:.0f}", "Worst Rank": "{:.0f}"}),
         use_container_width=True, hide_index=True,
     )
-
-    # ── Interaction Features Explainer ────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("#### 🔧 What Fixed It — Interaction Features")
-    st.markdown(
-        f'<div class="info-box">'
-        f'<b>7 product × signal interaction features</b> were added to force the model '
-        f'to learn product-specific signal weights — directly addressing the reviewer concern.<br><br>'
-        f'<b>Before:</b> 26 features — model learned "strong company" patterns.<br>'
-        f'<b>After:</b> 33 features — model learns "hiring matters 3× more for ContactMatcher '
-        f'than for Storage" and "IT spend predicts FinanceHub but not ChatBot Plugin."'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    interact_rows = []
-    for f1, f2, name in INTERACTION_PAIRS:
-        interact_rows.append({
-            "Feature"      : name,
-            "Signal 1"     : FEATURE_LABELS.get(f1, f1),
-            "Signal 2"     : FEATURE_LABELS.get(f2, f2),
-            "What it learns": f"Does {FEATURE_LABELS.get(f1,f1)} matter more for some products than others?",
-        })
-    st.dataframe(pd.DataFrame(interact_rows), use_container_width=True, hide_index=True)
-
-    st.markdown(f"""
-    <div class="warn-box">
-      <b>Honest caveat:</b> Interaction features improve product differentiation but do not fully
-      solve the engineered label problem. A company with strong signals still scores well across
-      most products. The definitive fix remains replacing the engineered <code>converted</code>
-      label with real CRM closed-won data — scoped for Phase 2.
-    </div>
-    """, unsafe_allow_html=True)
