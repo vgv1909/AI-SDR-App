@@ -207,15 +207,6 @@ FEATURE_LABELS = {
     "product_enc":"Product Type","industry_fit_score":"Industry Fit Score",
 }
 
-# Pre-filled golden path questions for demo
-DEMO_QUESTIONS = [
-    "Who should I call today for ContactMatcher?",
-    "Write a cold email to the #1 ranked company",
-    "Which companies have high intent but haven't been contacted recently?",
-    "Which companies are actively hiring AND recently funded?",
-    "What's the best product to pitch to a Finance company?",
-]
-
 # ── Interaction Features ───────────────────────────────────────────────────────
 # These cross features force the model to learn product-specific signal weights.
 # e.g. active_hiring matters MORE for ContactMatcher than for Storage.
@@ -573,8 +564,15 @@ with st.sidebar:
 
     api_key = os.getenv("OPENAI_API_KEY", "")
 
-    # Golden path demo questions
+    # Golden path demo questions — dynamic based on selected product
     st.markdown("**💡 Quick questions:**")
+    DEMO_QUESTIONS = [
+        f"Who should I call today for {sel_prod}?",
+        f"Write a cold email to the #1 ranked company for {sel_prod}",
+        f"Which companies have high intent but haven't been contacted recently?",
+        f"Which companies are actively hiring AND recently funded?",
+        f"What's the best product to pitch to a Finance company?",
+    ]
     for q in DEMO_QUESTIONS:
         if st.button(q, key=f"dq_{q[:25]}", use_container_width=True):
             st.session_state.chat_history.append({"role": "user", "content": q})
@@ -681,20 +679,23 @@ prod_revenue = saas[saas["Product"] == sel_prod]["Sales"].sum()
 prod_txns    = saas[saas["Product"] == sel_prod]["Sales"].count()
 
 # Compute real Precision@10 — how many of top 10 are genuinely converted
-df_ml_conv   = df_ml.copy()
+df_ml_conv              = df_ml.copy()
 df_ml_conv["converted"] = build_converted(df_ml_conv)
-_, fit_p10   = build_product_label(sel_prod, df_en, saas)
-top10_idx    = ranked.head(10).index
-top10_conv   = df_ml_conv["converted"].iloc[top10_idx]
-_, prod_labels = build_product_label(sel_prod, df_en, saas)
-top10_labels = prod_labels.iloc[top10_idx]
+_, prod_label_series    = build_product_label(sel_prod, df_en, saas)
+
+# Get top 10 company names from ranked, find their original positions in df_en
+top10_names  = ranked.head(10)["name"].tolist()
+name_to_pos  = {name: i for i, name in enumerate(df_en["name"].tolist())}
+top10_pos    = [name_to_pos[n] for n in top10_names if n in name_to_pos]
+top10_conv   = df_ml_conv["converted"].iloc[top10_pos]
+top10_labels = prod_label_series.iloc[top10_pos]
 precision_at_10 = ((top10_conv == 1) & (top10_labels == 1)).sum() / 10
 c1, c2, c3, c4 = st.columns(4)
 for col, val, lbl in [
-    (c1, f"{len(top_df)}", "Companies Ranked"),
+    (c1, f"{len(ranked):,}", "Total Companies Ranked"),
     (c2, f"${prod_revenue:,.0f}", f"{sel_prod} · {prod_txns} deals in dataset"),
     (c3, str(auc), "ROC-AUC Score"),
-    (c4, f"{precision_at_10:.2f}", "Precision@10 (live)"),
+    (c4, f"{precision_at_10:.2f}", f"Precision@10 of {len(ranked):,}"),
 ]:
     col.markdown(f'<div class="metric-card"><div class="metric-value">{val}</div>'
                  f'<div class="metric-label">{lbl}</div></div>', unsafe_allow_html=True)
