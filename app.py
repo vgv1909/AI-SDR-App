@@ -690,15 +690,14 @@ name_to_pos  = {name: i for i, name in enumerate(df_en["name"].tolist())}
 top10_pos    = [name_to_pos[n] for n in top10_names if n in name_to_pos]
 top10_conv   = df_ml_conv["converted"].iloc[top10_pos]
 precision_at_10 = round(top10_conv.sum() / 10, 2)
-conv_rate = build_converted(df_ml).mean()
 p10_display = f"{int(precision_at_10 * 10)} / 10"
 
 c1, c2, c3, c4 = st.columns(4)
 for col, val, lbl in [
-    (c1, f"{conv_rate*100:.1f}%",   "Conversion Rate"),
-    (c2, f"{p10_display} ✅",        "Top 10 are Buyers"),
-    (c3, str(auc),                   "ROC-AUC Score"),
-    (c4, f"${prod_avg_deal:,.0f}",   f"{sel_prod} · Avg Deal"),
+    (c1, f"{p10_display} ✅",        f"Top 10 · {sel_prod}"),
+    (c2, f"${prod_avg_deal:,.0f}",   f"Avg Deal Size"),
+    (c3, f"{prod_txns:,}",           f"Deals in Dataset"),
+    (c4, f"${prod_revenue:,.0f}",    f"Total Revenue"),
 ]:
     col.markdown(f'<div class="metric-card"><div class="metric-value">{val}</div>'
                  f'<div class="metric-label">{lbl}</div></div>', unsafe_allow_html=True)
