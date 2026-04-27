@@ -581,9 +581,39 @@ with st.sidebar:
             st.session_state["_pending_chat"] = q
 
     # Chat history display
+    # Chat history display — sidebar preview (Option A: expanded preview)
     if st.session_state.chat_history:
         st.markdown("---")
-        for msg in st.session_state.chat_history[-6:]:
+        for msg in st.session_state.chat_history[-4:]:
+            if msg["role"] == "user":
+                st.markdown(f"**👤** {msg['content']}")
+            else:
+                # Show up to 600 chars — enough for a full short answer
+                preview = msg['content'][:600]
+                st.markdown(f"**🤖** {preview}{'…' if len(msg['content']) > 600 else ''}")
+                if msg.get("sources"):
+                    st.caption(f"From: {', '.join(msg['sources'][:2])}")
+                if len(msg['content']) > 600:
+                    st.caption("↓ Scroll down for full answer")
+
+    if st.session_state.chat_history:
+        if st.button("🗑️ Clear chat", key="sb_clear", use_container_width=True):
+            st.session_state.chat_history = []
+            st.rerun()
+
+    st.markdown("---")
+    _user_input = st.text_input(
+        "Ask anything:",
+        placeholder="e.g. Why should I call #1?",
+        key="sb_chat_input",
+        label_visibility="collapsed",
+    )
+    if st.button("Send 📨", type="primary", use_container_width=True, key="sb_send"):
+        if _user_input and api_key:
+            st.session_state.chat_history.append({"role": "user", "content": _user_input})
+            st.session_state["_pending_chat"] = _user_input
+        elif not api_key:
+            st.error("Add OPENAI_API_KEY to Streamlit secrets.")
             if msg["role"] == "user":
                 st.markdown(f"**👤** {msg['content']}")
             else:
