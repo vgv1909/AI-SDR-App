@@ -1179,19 +1179,18 @@ with tab3:
         The Engine — Unified XGBoost Model
       </div>
       <div style="color:white;font-size:1.1rem;font-weight:700;font-family:monospace">
-        Score = σ  Σ  αₖ · hₖ(x)   where x ∈ ℝ³³
+        Score = σ  Σ  αₖ · hₖ(x)
       </div>
       <div style="color:rgba(255,255,255,0.7);font-size:0.82rem;margin-top:8px">
-        σ = sigmoid · αₖ = learning rate (0.05) · hₖ = tree k output ·
-        x = 26 raw signals + 7 product×signal interactions ·
-        14,000 training pairs · No manual weighting · No data leakage
+        100 decision trees · each tree votes on a company · votes are weighted and summed ·
+        sigmoid converts to 0–1 probability · trained on 14,000 company×product pairs
       </div>
     </div>
     """, unsafe_allow_html=True)
 
     # ── Model Comparison Bar Chart ────────────────────────────────────────────
     st.markdown("#### 📊 Why XGBoost?")
-    st.caption("ROC-AUC comparison — higher is better. XGBoost wins on every metric.")
+    st.caption("ROC-AUC, PR-AUC and F1 comparison across models — higher is better · 🟢 ROC-AUC · 🔵 PR-AUC · 🟡 F1 · Full color = XGBoost winner · Faded = other models")
 
     model_data = {
         "Model"  : ["Logistic Regression", "Random Forest", "Gradient Boosting", "XGBoost"],
@@ -1349,48 +1348,6 @@ with tab3:
                 """, unsafe_allow_html=True)
         else:
             st.markdown("No significant negative factors.")
-
-    st.markdown("---")
-
-    # ── Honest Slide ──────────────────────────────────────────────────────────
-    st.markdown("#### ⚠️ Known Limitations — Engineering Honesty")
-    st.markdown(f'<div class="warn-box">Finding your own limitations before others do is a sign of '
-                f'engineering maturity — not weakness.</div>',
-                unsafe_allow_html=True)
-
-    limitations = [
-        {
-            "title" : "Engineered Label Risk",
-            "detail": "The `converted` target was built from buying signals — not real CRM outcomes. A company can score high without ever purchasing.",
-            "fix"   : "Phase 2: Replace with real CRM closed-won/lost data from a SaaS sales partner.",
-            "timeline": "Q3 2025",
-        },
-        {
-            "title" : "Cold-Start Problem",
-            "detail": "New companies with no Crunchbase profile or CRM history score near the median regardless of true potential.",
-            "fix"   : "Industry-average imputation + confidence interval badges for low-data companies.",
-            "timeline": "Q2 2025",
-        },
-        {
-            "title" : "Static Training Data",
-            "detail": "Model is trained on a fixed snapshot. A cold company 6 months ago may now be hiring and funded — model won't know until retrained.",
-            "fix"   : "Weekly re-training via GitHub Actions + Crunchbase API refresh.",
-            "timeline": "Q4 2025",
-        },
-    ]
-
-    for lim in limitations:
-        st.markdown(f"""
-        <div class="honest-box">
-          <b>⚠️ {lim['title']}</b><br>
-          <span style="color:{SUB};font-size:0.88rem">{lim['detail']}</span><br><br>
-          <span style="color:#065f46;font-size:0.88rem">
-            ✅ <b>Mitigation:</b> {lim['fix']}
-            &nbsp;&nbsp;<span style="background:#FEF3C7;padding:2px 8px;
-              border-radius:4px;font-size:0.8rem">Target: {lim['timeline']}</span>
-          </span>
-        </div>
-        """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 4 — RANK DIVERGENCE
