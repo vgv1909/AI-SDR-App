@@ -580,17 +580,7 @@ with st.sidebar:
             st.session_state.chat_history.append({"role": "user", "content": q})
             st.session_state["_pending_chat"] = q
 
-    # Chat history display — sidebar (full answer, scrollable)
-    if st.session_state.chat_history:
-        st.markdown("---")
-        for msg in st.session_state.chat_history[-4:]:
-            if msg["role"] == "user":
-                st.markdown(f"**👤** {msg['content']}")
-            else:
-                st.markdown(f"**🤖** {msg['content']}")
-                if msg.get("sources"):
-                    st.caption(f"From: {', '.join(msg['sources'][:2])}")
-
+    # Chat input only — full conversation shows in main area below
     if st.session_state.chat_history:
         if st.button("🗑️ Clear chat", key="sb_clear", use_container_width=True):
             st.session_state.chat_history = []
@@ -688,12 +678,23 @@ st.markdown(f"""
 
 # Key metrics
 prod_revenue = saas[saas["Product"] == sel_prod]["Sales"].sum()
+prod_txns    = saas[saas["Product"] == sel_prod]["Sales"].count()
+
+# Compute real Precision@10 — how many of top 10 are genuinely converted
+df_ml_conv   = df_ml.copy()
+df_ml_conv["converted"] = build_converted(df_ml_conv)
+_, fit_p10   = build_product_label(sel_prod, df_en, saas)
+top10_idx    = ranked.head(10).index
+top10_conv   = df_ml_conv["converted"].iloc[top10_idx]
+_, prod_labels = build_product_label(sel_prod, df_en, saas)
+top10_labels = prod_labels.iloc[top10_idx]
+precision_at_10 = ((top10_conv == 1) & (top10_labels == 1)).sum() / 10
 c1, c2, c3, c4 = st.columns(4)
 for col, val, lbl in [
     (c1, f"{len(top_df)}", "Companies Ranked"),
-    (c2, f"${prod_revenue:,.0f}", f"{sel_prod} Revenue"),
+    (c2, f"${prod_revenue:,.0f}", f"{sel_prod} · {prod_txns} deals in dataset"),
     (c3, str(auc), "ROC-AUC Score"),
-    (c4, "1.00", "Precision@10"),
+    (c4, f"{precision_at_10:.2f}", "Precision@10 (live)"),
 ]:
     col.markdown(f'<div class="metric-card"><div class="metric-value">{val}</div>'
                  f'<div class="metric-label">{lbl}</div></div>', unsafe_allow_html=True)
