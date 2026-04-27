@@ -580,44 +580,14 @@ with st.sidebar:
             st.session_state.chat_history.append({"role": "user", "content": q})
             st.session_state["_pending_chat"] = q
 
-    # Chat history display
-    # Chat history display — sidebar preview (Option A: expanded preview)
+    # Chat history display — sidebar (full answer, scrollable)
     if st.session_state.chat_history:
         st.markdown("---")
         for msg in st.session_state.chat_history[-4:]:
             if msg["role"] == "user":
                 st.markdown(f"**👤** {msg['content']}")
             else:
-                # Show up to 600 chars — enough for a full short answer
-                preview = msg['content'][:600]
-                st.markdown(f"**🤖** {preview}{'…' if len(msg['content']) > 600 else ''}")
-                if msg.get("sources"):
-                    st.caption(f"From: {', '.join(msg['sources'][:2])}")
-                if len(msg['content']) > 600:
-                    st.caption("↓ Scroll down for full answer")
-
-    if st.session_state.chat_history:
-        if st.button("🗑️ Clear chat", key="sb_clear", use_container_width=True):
-            st.session_state.chat_history = []
-            st.rerun()
-
-    st.markdown("---")
-    _user_input = st.text_input(
-        "Ask anything:",
-        placeholder="e.g. Why should I call #1?",
-        key="sb_chat_input",
-        label_visibility="collapsed",
-    )
-    if st.button("Send 📨", type="primary", use_container_width=True, key="sb_send"):
-        if _user_input and api_key:
-            st.session_state.chat_history.append({"role": "user", "content": _user_input})
-            st.session_state["_pending_chat"] = _user_input
-        elif not api_key:
-            st.error("Add OPENAI_API_KEY to Streamlit secrets.")
-            if msg["role"] == "user":
-                st.markdown(f"**👤** {msg['content']}")
-            else:
-                st.markdown(f"**🤖** {msg['content'][:300]}{'…' if len(msg['content']) > 300 else ''}")
+                st.markdown(f"**🤖** {msg['content']}")
                 if msg.get("sources"):
                     st.caption(f"From: {', '.join(msg['sources'][:2])}")
 
@@ -731,6 +701,43 @@ for col, val, lbl in [
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── TABS ───────────────────────────────────────────────────────────────────────
+
+# ── Option B: Full chat panel in main area ────────────────────────────────────
+if st.session_state.chat_history:
+    st.markdown(f"""
+    <div style="background:{CARD};border:1px solid {BORDER};border-radius:14px;
+      padding:20px 24px;margin-bottom:20px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+      <div style="font-weight:700;font-size:1rem;color:{TEXT};margin-bottom:14px">
+        🤖 AI Sales Assistant — Full Conversation
+      </div>
+    """, unsafe_allow_html=True)
+
+    for msg in st.session_state.chat_history:
+        if msg["role"] == "user":
+            st.markdown(f"""
+            <div style="display:flex;justify-content:flex-end;margin:8px 0">
+              <div style="background:{PRIMARY};color:white;padding:10px 16px;
+                border-radius:18px 18px 4px 18px;max-width:75%;font-size:0.9rem">
+                👤 &nbsp;{msg['content']}
+              </div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            sources_html = ""
+            if msg.get("sources"):
+                sources_html = (f'<div style="margin-top:8px;font-size:0.78rem;color:{SUB}">'
+                                f'📌 Sources: {", ".join(msg["sources"][:3])}</div>')
+            st.markdown(f"""
+            <div style="display:flex;justify-content:flex-start;margin:8px 0">
+              <div style="background:{LIGHT};border:1px solid #A7F3D0;padding:12px 18px;
+                border-radius:18px 18px 18px 4px;max-width:90%;font-size:0.9rem;color:{TEXT}">
+                🤖 &nbsp;{msg['content'].replace(chr(10), '<br>')}
+                {sources_html}
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
 tab1, tab2, tab3, tab4 = st.tabs([
     "🏆 Top Accounts",
     "📊 Market Intelligence",
