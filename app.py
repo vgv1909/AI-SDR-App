@@ -769,10 +769,10 @@ with tab1:
         ).tolist()
 
         urgency_label = top_df.apply(
-            lambda r: "✅ Hiring + Funded" if r["active_hiring"] and r["recent_funding_event"]
-            else ("🔵 Hiring" if r["active_hiring"]
-            else ("💰 Funded" if r["recent_funding_event"]
-            else "⚪ Watch List")), axis=1
+            lambda r: "Hiring + Funded" if r["active_hiring"] and r["recent_funding_event"]
+            else ("Hiring" if r["active_hiring"]
+            else ("Funded" if r["recent_funding_event"]
+            else "Watch List")), axis=1
         ).tolist()
 
         labels = [f"#{i+1}  {n[:30]}" for i, n in enumerate(top_df["name"])]
@@ -789,10 +789,10 @@ with tab1:
 
         # Score dots
         for label_val, color in [
-            ("✅ Hiring + Funded", PRIMARY),
-            ("🔵 Hiring",          ACCENT),
-            ("💰 Funded",          GOLD),
-            ("⚪ Watch List",       "#CBD5E1"),
+            ("Hiring + Funded", PRIMARY),
+            ("Hiring",          ACCENT),
+            ("Funded",          GOLD),
+            ("Watch List",      "#CBD5E1"),
         ]:
             mask = [u == label_val for u in urgency_label]
             if not any(mask):
@@ -841,25 +841,31 @@ with tab1:
         st.markdown(f"### 📋 Top {top_k} Company Details")
 
         for pos, (_, row) in enumerate(top_df.iterrows()):
-            # Build Why box from actual signals — never falls back to generic text
+            # Build Why box from actual signals — bulletproof version
             why_signals = []
-            if row.get("active_hiring", 0):       why_signals.append("Actively Hiring 📈")
-            if row.get("recent_funding_event", 0): why_signals.append("Recently Funded 💰")
-            if row.get("reply_rate_pct", 0) > 15:  why_signals.append(f"High Reply Rate ({row['reply_rate_pct']:.1f}%)")
-            if row.get("deal_potential_usd", 0) > ranked["deal_potential_usd"].quantile(0.7):
-                why_signals.append("High Deal Value 💎")
-            if row.get("industry_fit_score", 0) > 0.1:
-                why_signals.append("Strong Industry Fit 🎯")
-            # Fill with SHAP if we have it and need more signals
-            if len(why_signals) < 2:
-                try:
-                    shap_why = why_text(sv[pos], final_fc)
-                    if shap_why and shap_why != "Strong overall profile":
-                        why_signals.append(shap_why)
-                except Exception:
-                    pass
+            hiring  = int(row["active_hiring"])   if "active_hiring"          in row.index else 0
+            funded  = int(row["recent_funding_event"]) if "recent_funding_event" in row.index else 0
+            reply   = float(row["reply_rate_pct"]) if "reply_rate_pct"        in row.index else 0
+            deal    = float(row["deal_potential_usd"]) if "deal_potential_usd" in row.index else 0
+            fit     = float(row["industry_fit_score"]) if "industry_fit_score" in row.index else 0
+
+            if hiring:          why_signals.append("Actively Hiring 📈")
+            if funded:          why_signals.append("Recently Funded 💰")
+            if reply > 15:      why_signals.append(f"High Reply Rate ({reply:.1f}%)")
+            if deal > ranked["deal_potential_usd"].quantile(0.7):
+                                why_signals.append("High Deal Value 💎")
+            if fit > 0.05:      why_signals.append("Strong Industry Fit 🎯")
+
             if not why_signals:
-                why_signals = ["Strong overall buying signals across multiple dimensions"]
+                # Last resort — pick top 3 signals by raw value
+                signal_checks = [
+                    (reply,  f"Reply Rate {reply:.1f}%"),
+                    (deal/10000, f"Deal Potential ${deal:,.0f}"),
+                    (float(row.get("active_tech_count", 0)), "Large Tech Stack"),
+                ]
+                signal_checks.sort(key=lambda x: x[0], reverse=True)
+                why_signals = [s[1] for s in signal_checks[:2]]
+
             why_str = " · ".join(why_signals[:3])
 
             prob    = row["score"]
