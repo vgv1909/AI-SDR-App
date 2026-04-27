@@ -1202,12 +1202,13 @@ with tab3:
     mdf = pd.DataFrame(model_data)
 
     fig_model = go.Figure()
+    opacity_map = {PRIMARY: "rgba(16,185,129,0.25)", ACCENT: "rgba(59,130,246,0.25)", GOLD: "rgba(245,158,11,0.25)"}
     for metric, color in [("ROC-AUC", PRIMARY), ("PR-AUC", ACCENT), ("F1", GOLD)]:
         fig_model.add_trace(go.Bar(
             name=metric,
             x=mdf["Model"],
             y=mdf[metric],
-            marker_color=[color if m == "XGBoost" else f"{color}55" for m in mdf["Model"]],
+            marker_color=[color if m == "XGBoost" else opacity_map[color] for m in mdf["Model"]],
             text=[f"{v:.4f}" for v in mdf[metric]],
             textposition="outside",
         ))
